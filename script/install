@@ -91,4 +91,5 @@ rm -rf "$destination"
 ditto "$app" "$destination"
 
 echo "Launching…"
-open "$destination"
+# LaunchServices can briefly fail (error -600) right after the copy, so try once more.
+open "$destination" || { sleep 1; open "$destination"; }
