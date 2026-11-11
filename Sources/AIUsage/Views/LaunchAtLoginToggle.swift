@@ -29,7 +29,7 @@ struct LaunchAtLoginToggle: View {
             } else {
                 try service.unregister()
             }
-            Log.app.info("launch at login enabled=\(enable, privacy: .public) status=\(service.status.rawValue, privacy: .public)")
+            Log.app.notice("launch at login enabled=\(enable, privacy: .public) status=\(service.status.rawValue, privacy: .public)")
         } catch {
             Log.app.error("launch at login change failed enabled=\(enable, privacy: .public)")
             isEnabled = service.status == .enabled

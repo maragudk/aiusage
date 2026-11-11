@@ -22,14 +22,14 @@ struct CodexLoginRepair: Sendable {
         progress("Asking Codex to refresh its login…")
         let didAnswer = await refreshThroughAppServer()
         let isValid = isLoginValid()
-        Log.login.info("codex app-server refresh answered=\(didAnswer, privacy: .public) valid=\(isValid, privacy: .public)")
+        Log.login.notice("codex app-server refresh answered=\(didAnswer, privacy: .public) valid=\(isValid, privacy: .public)")
         guard !isValid else {
             return
         }
 
         progress("Finish signing in to Codex in your browser…")
         let status = await runLogin()
-        Log.login.info("codex login exited status=\(status, privacy: .public)")
+        Log.login.notice("codex login exited status=\(status, privacy: .public)")
     }
 
     /// Asks a short-lived `codex app-server` to refresh the token. Returns whether it answered the request.

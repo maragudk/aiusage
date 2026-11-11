@@ -23,6 +23,7 @@ struct FooterView: View {
                 Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
                     .labelStyle(.iconOnly)
                     .buttonStyle(.borderless)
+                    .font(.body)
                     .keyboardShortcut("r")
                     .help("Refresh now (⌘R)")
                     .disabled(isRefreshing)

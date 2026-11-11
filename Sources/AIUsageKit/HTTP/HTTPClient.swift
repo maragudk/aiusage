@@ -61,7 +61,7 @@ extension HTTPClient {
             Log.usage.error("fetch provider=\(provider, privacy: .public) category=\(error.category, privacy: .public)")
             throw error
         }
-        Log.usage.info("fetch provider=\(provider, privacy: .public) status=\(response.statusCode, privacy: .public)")
+        Log.usage.notice("fetch provider=\(provider, privacy: .public) status=\(response.statusCode, privacy: .public)")
         switch response.statusCode {
         case 200..<300:
             return data

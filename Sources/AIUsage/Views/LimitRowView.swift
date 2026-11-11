@@ -15,9 +15,7 @@ struct LimitRowView: View {
                     .monospacedDigit()
                     .fontWeight(.medium)
             }
-            ProgressView(value: min(max(limit.percentUsed, 0), 100), total: 100)
-                .progressViewStyle(.linear)
-                .tint(limit.displaySeverity.color)
+            UsageBar(fraction: limit.percentUsed / 100, color: limit.displaySeverity.color)
                 .accessibilityHidden(true)
             if let resetsAt = limit.resetsAt {
                 Text("Resets \(UsageFormat.relative(to: resetsAt, now: now)) · \(UsageFormat.absolute(resetsAt, now: now))")

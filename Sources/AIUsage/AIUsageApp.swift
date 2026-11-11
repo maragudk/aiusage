@@ -23,7 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ])
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        Log.app.info("launched version=\(Self.version, privacy: .public)")
+        Log.app.notice("launched version=\(Self.version, privacy: .public)")
         store.start()
     }
 

@@ -23,11 +23,15 @@ public struct LoginRepair: Sendable {
     /// The button title, like "Refresh Codex login".
     public let title: String
 
+    /// A tooltip that says what the button will do.
+    public let help: String
+
     /// Runs the repair. It reports short status messages through `progress` while it works.
     public let perform: @Sendable (_ progress: @escaping @Sendable (String) -> Void) async -> Void
 
-    public init(title: String, perform: @escaping @Sendable (_ progress: @escaping @Sendable (String) -> Void) async -> Void) {
+    public init(title: String, help: String, perform: @escaping @Sendable (_ progress: @escaping @Sendable (String) -> Void) async -> Void) {
         self.title = title
+        self.help = help
         self.perform = perform
     }
 }

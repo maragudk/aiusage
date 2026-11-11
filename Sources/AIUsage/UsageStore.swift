@@ -74,7 +74,9 @@ final class UsageStore {
         for provider in providers {
             update(provider.id) { section in
                 section.isAvailable = provider.isAvailable
-                section.repairTitle = provider.loginRepair?.title
+                let repair = provider.loginRepair
+                section.repairTitle = repair?.title
+                section.repairHelp = repair?.help
             }
         }
         let due = providers.filter { isDue($0, reason: reason, now: now) }
@@ -111,7 +113,7 @@ final class UsageStore {
         else {
             return
         }
-        Log.login.info("login repair started provider=\(id, privacy: .public)")
+        Log.login.notice("login repair started provider=\(id, privacy: .public)")
         update(id) { $0.repairStatus = "Starting…" }
         Task {
             await repair.perform { message in
@@ -125,7 +127,7 @@ final class UsageStore {
                 }
             }
             update(id) { $0.repairStatus = nil }
-            Log.login.info("login repair finished provider=\(id, privacy: .public)")
+            Log.login.notice("login repair finished provider=\(id, privacy: .public)")
             await refresh(.manual)
         }
     }
@@ -154,7 +156,7 @@ final class UsageStore {
                 section.error = nil
                 section.lastSuccess = now
             }
-            Log.usage.info("fetch ok provider=\(id, privacy: .public) limits=\(limits.count, privacy: .public)")
+            Log.usage.notice("fetch ok provider=\(id, privacy: .public) limits=\(limits.count, privacy: .public)")
         case .failure(let error):
             if error.shouldBackOff {
                 backoffs[id, default: Backoff()].recordFailure(at: now, retryAfter: error.retryAfter)

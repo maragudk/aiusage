@@ -63,6 +63,7 @@ private struct ErrorView: View {
                 } else if section.canRepairLogin, let title = section.repairTitle {
                     Button(title, action: repairLogin)
                         .controlSize(.small)
+                        .help(section.repairHelp ?? "")
                 }
             }
         }

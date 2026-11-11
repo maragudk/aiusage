@@ -9,8 +9,9 @@ struct ProviderSection: Identifiable {
     var limits: [UsageLimit] = []
     var error: UsageError?
     var lastSuccess: Date?
-    /// The title of the provider's login repair button, if it has one.
+    /// The title and tooltip of the provider's login repair button, if it has one.
     var repairTitle: String?
+    var repairHelp: String?
     /// The current step of a running login repair, or nil when none is running.
     var repairStatus: String?
 

@@ -55,7 +55,11 @@ public struct CodexProvider: UsageProvider {
             return nil
         }
         let repair = CodexLoginRepair(codex: codex, version: version, isLoginValid: { [self] in hasUnexpiredToken() })
-        return LoginRepair(title: "Refresh Codex login", perform: repair.run)
+        return LoginRepair(
+            title: "Refresh Codex login",
+            help: "Lets Codex refresh its own login. If that isn't enough, Codex opens its sign-in page in your browser.",
+            perform: repair.run
+        )
     }
 
     public func fetchLimits() async throws(UsageError) -> [UsageLimit] {
