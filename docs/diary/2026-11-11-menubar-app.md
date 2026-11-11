@@ -118,3 +118,37 @@ Each provider is one type behind `UsageProvider`, so a third provider is one new
 ### Future work
 - The Keychain "Always Allow" may be lost if Claude Code ever deletes and re-creates its Keychain item rather than updating it. If prompts keep coming back, this is the first thing to check.
 - `is_active` on Claude limits is parsed by the API but not shown. It might mark the binding limit.
+
+## Step 3: Switch the licence holder to Maragu ApS
+
+**Author:** licence-builder
+
+### Prompt Context
+
+**Verbatim prompt:** Small change in the worktree /Users/markus/Developer/aiusage/.claude/worktrees/menubar-app (branch `worktree-menubar-app`), a Swift menu bar app called AIUsage. The repo-local git identity is already set to maragubot. Do not push. Markus wants the licence from his template repo: [...] Replace /LICENSE with an exact copy of /Users/markus/Developer/template/LICENSE [...] In /script/install, change the Info.plist `NSHumanReadableCopyright` string [...] Run `swift test` to confirm nothing broke, then `script/install` so the installed app carries the new copyright.
+**Interpretation:** Change the copyright holder from Markus Wüstenberg to Maragu ApS everywhere outside the diary, and reinstall the app.
+**Inferred intent:** The project belongs under the company's name and licence text, like his other repos.
+
+### What I did
+Copied `/Users/markus/Developer/template/LICENSE` over `/LICENSE` (the copyright line is now `Copyright (c) Maragu ApS`, no year). Changed the `NSHumanReadableCopyright` string in `/script/install` to `Copyright © Maragu ApS. MIT licence.`. `grep -rn 'Wüstenberg' .` (excluding `.build` and `.git`) found only those two places and the diary; `/README.md` names no copyright holder, so it is unchanged. Ran `swift test` (63 tests in 9 suites passed) and `script/install`.
+
+### Why
+The licence holder is the company, not the person.
+
+### What worked
+`plutil -extract NSHumanReadableCopyright raw /Applications/AIUsage.app/Contents/Info.plist` prints `Copyright © Maragu ApS. MIT licence.`, so the installed app carries the new string.
+
+### What didn't work
+Nothing; this step went smoothly.
+
+### What I learned
+Earlier diary steps still mention the old holder. I left them alone because they are history.
+
+### What was tricky
+Nothing.
+
+### What warrants review
+`git diff HEAD~1 -- LICENSE script/install`. `cmp LICENSE /Users/markus/Developer/template/LICENSE` should print nothing.
+
+### Future work
+None.
