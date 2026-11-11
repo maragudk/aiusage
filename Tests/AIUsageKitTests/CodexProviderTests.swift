@@ -39,7 +39,7 @@ struct CodexProviderTests {
         let http = FakeHTTPClient(body: try Fixture.data("codex-usage"))
         let limits = try await provider(http: http, authFile: authFile(token: token)).fetchLimits()
 
-        #expect(limits.map(\.name) == ["5-hour", "Weekly", "codex_other · 30-minute"])
+        #expect(limits.map(\.name) == ["5-hour", "Weekly", "Code review · Weekly", "codex_other · 30-minute"])
         let request = try #require(http.sentRequests.first)
         #expect(request.url?.absoluteString == "https://chatgpt.com/backend-api/wham/usage")
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer \(token)")

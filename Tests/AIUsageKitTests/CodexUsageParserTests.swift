@@ -10,12 +10,12 @@ struct CodexUsageParserTests {
     func `builds rows from the main and additional rate limits`() throws {
         let limits = try CodexUsageParser.parse(Fixture.data("codex-usage"), now: now)
 
-        #expect(limits.map(\.name) == ["5-hour", "Weekly", "codex_other · 30-minute"])
-        #expect(limits.map(\.percentUsed) == [42, 5, 88])
-        #expect(limits.map(\.severity) == [nil, nil, nil])
+        #expect(limits.map(\.name) == ["5-hour", "Weekly", "Code review · Weekly", "codex_other · 30-minute"])
+        #expect(limits.map(\.percentUsed) == [42, 5, 10, 88])
+        #expect(limits.map(\.severity) == [nil, nil, nil, nil])
         #expect(limits[0].resetsAt == Date(timeIntervalSince1970: 1_762_873_320))
-        #expect(limits[2].resetsAt == Date(timeIntervalSince1970: 1_762_873_800))
-        #expect(Set(limits.map(\.id)).count == 3)
+        #expect(limits[3].resetsAt == Date(timeIntervalSince1970: 1_762_873_800))
+        #expect(Set(limits.map(\.id)).count == 4)
     }
 
     @Test

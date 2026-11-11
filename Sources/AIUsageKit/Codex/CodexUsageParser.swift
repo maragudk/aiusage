@@ -2,7 +2,8 @@ import Foundation
 
 /// Parses the response of `GET https://chatgpt.com/backend-api/wham/usage`.
 ///
-/// The shape follows the openai/codex source (`RateLimitStatusPayload`). Every field is optional.
+/// The shape follows the openai/codex source (`RateLimitStatusPayload`) and a live response, which also
+/// has `code_review_rate_limit` with the same shape as `rate_limit`. Every field is optional.
 enum CodexUsageParser {
     static func parse(_ data: Data, now: Date) throws(UsageError) -> [UsageLimit] {
         let response: Response
@@ -13,11 +14,12 @@ enum CodexUsageParser {
         }
 
         let main = response.rateLimit?.usageLimits(idPrefix: "main", namePrefix: nil, now: now) ?? []
+        let codeReview = response.codeReviewRateLimit?.usageLimits(idPrefix: "code-review", namePrefix: "Code review", now: now) ?? []
         let additional = (response.additionalRateLimits ?? []).compactMap(\.value).enumerated().flatMap { index, limit in
             let prefix = limit.limitName ?? limit.meteredFeature ?? "Additional"
             return limit.rateLimit?.usageLimits(idPrefix: "additional-\(index)", namePrefix: prefix, now: now) ?? []
         }
-        let limits = main + additional
+        let limits = main + codeReview + additional
         guard !limits.isEmpty else {
             throw .invalidResponse
         }
@@ -43,16 +45,19 @@ enum CodexUsageParser {
 
 private struct Response: Decodable {
     let rateLimit: RateLimit?
+    let codeReviewRateLimit: RateLimit?
     let additionalRateLimits: [Lossy<AdditionalRateLimit>]?
 
     enum CodingKeys: String, CodingKey {
         case rateLimit = "rate_limit"
+        case codeReviewRateLimit = "code_review_rate_limit"
         case additionalRateLimits = "additional_rate_limits"
     }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         rateLimit = container.lenient(RateLimit.self, forKey: .rateLimit)
+        codeReviewRateLimit = container.lenient(RateLimit.self, forKey: .codeReviewRateLimit)
         additionalRateLimits = container.lenient([Lossy<AdditionalRateLimit>].self, forKey: .additionalRateLimits)
     }
 }
