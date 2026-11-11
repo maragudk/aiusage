@@ -38,10 +38,43 @@ struct BackoffTests {
     }
 
     @Test
-    func `retry after is capped at an hour`() {
+    func `retry after longer than the maximum delay is honoured`() {
         var backoff = Backoff()
-        backoff.recordFailure(at: now, retryAfter: 86_400)
+        backoff.recordFailure(at: now, retryAfter: 7_200)
+        #expect(backoff.notBefore == now.addingTimeInterval(7_200))
+    }
+
+    @Test(arguments: [10 * 86_400, .infinity, .nan] as [TimeInterval])
+    func `absurd retry after values are capped at a day`(retryAfter: TimeInterval) {
+        var backoff = Backoff()
+        backoff.recordFailure(at: now, retryAfter: retryAfter)
+        let delay = backoff.notBefore?.timeIntervalSince(now)
+        #expect(delay == 86_400 || (retryAfter.isNaN && delay == 300))
+    }
+
+    @Test
+    func `many failures don't overflow`() {
+        var backoff = Backoff()
+        for _ in 0..<2_000 {
+            backoff.recordFailure(at: now, retryAfter: nil)
+        }
         #expect(backoff.notBefore == now.addingTimeInterval(3_600))
+    }
+
+    @Test(arguments: [
+        ("120", 120.0),
+        (" 5 ", 5.0),
+        ("-3", 0.0),
+        ("Wed, 21 Oct 2015 07:28:00 GMT", 60.0),
+    ] as [(String, TimeInterval)])
+    func `parses Retry-After as seconds or HTTP date`(value: String, expected: TimeInterval) {
+        let now = Date(timeIntervalSince1970: 1_445_412_420) // 2015-10-21T07:27:00Z
+        #expect(RetryAfter.seconds(from: value, now: now) == expected)
+    }
+
+    @Test(arguments: [nil, "", "soon"] as [String?])
+    func `ignores missing or malformed Retry-After`(value: String?) {
+        #expect(RetryAfter.seconds(from: value) == nil)
     }
 
     @Test

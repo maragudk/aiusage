@@ -68,6 +68,24 @@ struct CodexLoginRepairTests {
     }
 
     @Test
+    func `survives an app server that exits at once`() async throws {
+        let quitter = directory.appending(path: "quitter")
+        try Data("#!/bin/sh\nexit 1\n".utf8).write(to: quitter)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: quitter.path)
+
+        let repair = CodexLoginRepair(codex: quitter, version: "1", isLoginValid: { true })
+        await repair.run { _ in }
+    }
+
+    @Test
+    func `does nothing harmful when the CLI can't be started`() async {
+        let repair = CodexLoginRepair(codex: directory.appending(path: "missing"), version: "1", isLoginValid: { false })
+        let messages = Mutex<[String]>([])
+        await repair.run { message in messages.withLock { $0.append(message) } }
+        #expect(messages.withLock { $0 }.count == 2)
+    }
+
+    @Test
     func `gives up on an app server that never answers`() async throws {
         let silent = directory.appending(path: "silent")
         try Data("#!/bin/sh\nexec sleep 30\n".utf8).write(to: silent)

@@ -40,6 +40,13 @@ struct CodexUsageParserTests {
     }
 
     @Test
+    func `huge window lengths don't trap`() throws {
+        let json = #"{"rate_limit": {"primary_window": {"used_percent": 1, "limit_window_seconds": 1e300, "reset_at": 1e300}}}"#
+        let limits = try CodexUsageParser.parse(Data(json.utf8), now: now)
+        #expect(limits.map(\.name) == ["Primary"])
+    }
+
+    @Test
     func `throws when there are no windows`() {
         #expect(throws: UsageError.invalidResponse) {
             try CodexUsageParser.parse(Data(#"{"plan_type": "plus", "rate_limit": null}"#.utf8), now: now)

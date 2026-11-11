@@ -75,6 +75,20 @@ struct CodexProviderTests {
     }
 
     @Test
+    func `a login counts as accepted only if the server accepts it`() async throws {
+        let valid = try authFile(token: jwt(expiresAt: now.addingTimeInterval(3_600)))
+        let expired = try authFile(token: jwt(expiresAt: now.addingTimeInterval(-60)))
+        let missing = valid.deletingLastPathComponent().appending(path: "missing.json")
+
+        #expect(await provider(http: FakeHTTPClient(body: try Fixture.data("codex-usage")), authFile: valid).isLoginAccepted())
+        #expect(await !provider(http: FakeHTTPClient(status: 401), authFile: valid).isLoginAccepted())
+        #expect(await !provider(http: FakeHTTPClient(), authFile: expired).isLoginAccepted())
+        #expect(await !provider(http: FakeHTTPClient(), authFile: missing).isLoginAccepted())
+        // Other failures say nothing about the login, so they don't send the user to the browser.
+        #expect(await provider(http: FakeHTTPClient(status: 503), authFile: valid).isLoginAccepted())
+    }
+
+    @Test
     func `is available only with both auth file and CLI`() throws {
         let http = FakeHTTPClient()
         let file = try authFile(token: "t")

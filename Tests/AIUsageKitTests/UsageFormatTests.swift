@@ -48,6 +48,13 @@ struct UsageFormatTests {
         #expect(UsageFormat.updated(now.addingTimeInterval(-age), now: now) == expected)
     }
 
+    @Test
+    func `huge values don't trap`() {
+        #expect(UsageFormat.percent(1e300).hasSuffix("%"))
+        #expect(UsageFormat.relative(to: Date(timeIntervalSince1970: 1e300), now: now).hasPrefix("in "))
+        #expect(UsageFormat.updated(Date(timeIntervalSince1970: -1e300), now: now).hasPrefix("Updated "))
+    }
+
     @Test(arguments: [(85.0, "85%"), (72.6, "73%"), (0.4, "0%"), (100.0, "100%")])
     func `percentages are whole numbers`(percent: Double, expected: String) {
         #expect(UsageFormat.percent(percent) == expected)

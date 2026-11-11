@@ -15,15 +15,16 @@ final class UsageStore {
     }
 
     static let pollInterval = Duration.seconds(5 * 60)
-    /// Opening the panel refreshes data older than this.
+    /// Opening the panel refreshes a provider whose data is older than this,
+    /// unless it was already tried within this time.
     static let panelRefreshAge: TimeInterval = 60
 
     private(set) var sections: [ProviderSection]
-    private(set) var lastRefresh: Date?
     private(set) var isRefreshing = false
 
     @ObservationIgnored private let providers: [any UsageProvider]
     @ObservationIgnored private var backoffs: [String: Backoff] = [:]
+    @ObservationIgnored private var lastAttempts: [String: Date] = [:]
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     @ObservationIgnored private var needsManualRefresh = false
 
@@ -34,6 +35,11 @@ final class UsageStore {
 
     var visibleSections: [ProviderSection] {
         sections.filter(\.isAvailable)
+    }
+
+    /// When the newest data shown was fetched. Failed fetches don't count, so the footer never calls stale data fresh.
+    var lastUpdated: Date? {
+        visibleSections.compactMap(\.lastSuccess).max()
     }
 
     /// Starts polling. The first refresh happens right away.
@@ -50,9 +56,6 @@ final class UsageStore {
     }
 
     func panelDidOpen() {
-        if let lastRefresh, Date().timeIntervalSince(lastRefresh) <= Self.panelRefreshAge {
-            return
-        }
         Task { await refresh(.panelOpened) }
     }
 
@@ -67,19 +70,25 @@ final class UsageStore {
             }
             return
         }
-        isRefreshing = true
-        defer { isRefreshing = false }
-
         let now = Date()
         for provider in providers {
+            let isAvailable = provider.isAvailable
+            let repair = isAvailable ? provider.loginRepair : nil
             update(provider.id) { section in
-                section.isAvailable = provider.isAvailable
-                let repair = provider.loginRepair
+                section.isAvailable = isAvailable
                 section.repairTitle = repair?.title
                 section.repairHelp = repair?.help
             }
         }
         let due = providers.filter { isDue($0, reason: reason, now: now) }
+        guard !due.isEmpty else {
+            return
+        }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        for provider in due {
+            lastAttempts[provider.id] = now
+        }
         Log.usage.info("refresh reason=\(reason.rawValue, privacy: .public) providers=\(due.map(\.id).joined(separator: ","), privacy: .public)")
 
         await withTaskGroup(of: (String, Result<[UsageLimit], UsageError>).self) { group in
@@ -96,7 +105,6 @@ final class UsageStore {
                 apply(result, to: id)
             }
         }
-        lastRefresh = Date()
 
         if needsManualRefresh {
             needsManualRefresh = false
@@ -142,6 +150,13 @@ final class UsageStore {
         }
         if section(provider.id)?.error == .keychainDenied {
             return false
+        }
+        if reason == .panelOpened {
+            let isStale = section(provider.id)?.lastSuccess.map { now.timeIntervalSince($0) > Self.panelRefreshAge } ?? true
+            let wasTriedRecently = lastAttempts[provider.id].map { now.timeIntervalSince($0) <= Self.panelRefreshAge } ?? false
+            guard isStale, !wasTriedRecently else {
+                return false
+            }
         }
         return backoffs[provider.id, default: Backoff()].allowsAttempt(at: now)
     }

@@ -79,6 +79,13 @@ extension HTTPClient {
 
 /// Parses the `Retry-After` header, as seconds or an HTTP date.
 enum RetryAfter {
+    /// The IMF-fixdate format of HTTP, like "Wed, 21 Oct 2015 07:28:00 GMT".
+    private static let httpDate = Date.ParseStrategy(
+        format: "\(weekday: .abbreviated), \(day: .twoDigits) \(month: .abbreviated) \(year: .defaultDigits) \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits):\(second: .twoDigits) GMT",
+        locale: Locale(identifier: "en_US_POSIX"),
+        timeZone: .gmt
+    )
+
     static func seconds(from value: String?, now: Date = Date()) -> TimeInterval? {
         guard let value = value?.trimmingCharacters(in: .whitespaces), !value.isEmpty else {
             return nil
@@ -86,11 +93,7 @@ enum RetryAfter {
         if let seconds = TimeInterval(value) {
             return max(seconds, 0)
         }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = .gmt
-        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
-        guard let date = formatter.date(from: value) else {
+        guard let date = try? httpDate.parse(value) else {
             return nil
         }
         return max(date.timeIntervalSince(now), 0)

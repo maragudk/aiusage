@@ -64,6 +64,21 @@ I checked the handshake against the real binary with an empty scratch `CODEX_HOM
 
 Wrote `/README.md` and `/LICENSE` myself: the writer sub-agent couldn't be spawned ("In-process teammates cannot spawn background agents").
 
+Self-review: I ran the `code-review` skill (high effort) over `440745c..HEAD`. Its completion notice went to the lead, who passed on ten findings. I fixed all of them:
+
+1. Writing to the app server's stdin after it had exited would raise SIGPIPE and kill the app. The write end now has `F_SETNOSIGPIPE`, so the write fails with EPIPE and is caught.
+2. Escalation to `codex login` relied only on the local JWT `exp`, so a token that the server rejects but that hasn't reached its `exp` would loop. `CodexLoginRepair.isLoginValid` is now async and backed by `CodexProvider.isLoginAccepted()`, which makes a real usage request. Only `loginExpired` or `notLoggedIn` escalates; network and server errors don't open the browser.
+3. `LaunchAtLoginToggle` mirrored only `.enabled`. A `.requiresApproval` status therefore showed as off, and the resulting `onChange` unregistered the pending registration. The checkbox and the guard now share one definition, `isRegistered` (`.enabled` or `.requiresApproval`). I kept `@State` + `onChange` instead of the suggested `Binding(get:set:)`, because SwiftUI guidance discourages that and the shared definition fixes the bug.
+4. `Int(Double)` could trap on absurd API values. `UsageFormat.clampedInt` now clamps, and the Codex window length uses `Int(exactly:)`.
+5. `Backoff` capped `Retry-After` at an hour. It now honours longer values up to a day, as a guard against garbage, ignores NaN, and limits the exponent so it can't overflow.
+6. `lastRefresh` was set even when every fetch failed, so the footer could say "Updated just now" over stale data. The footer now uses `UsageStore.lastUpdated`, the newest per-section `lastSuccess`. A panel open refreshes only providers whose data is older than 60 s and that weren't tried within the last 60 s.
+7. If `process.run()` threw, the exit-status task and its stream leaked. `exitStatus(of:)` now returns the continuation, and the catch finishes it.
+8. `SecItemCopyMatching` blocked a cooperative-pool thread while the Keychain prompt was up. `ClaudeProvider` now reads on a dedicated serial `DispatchQueue` and bridges back with a continuation.
+9. Formatters were created on every call. A cached `ISO8601DateFormatter` failed to compile (`static property 'formatter' is not concurrency-safe because non-'Sendable' type 'ISO8601DateFormatter' may have shared mutable state`), so I switched to the `Sendable` `Date.ISO8601FormatStyle`, `Date.FormatStyle` and `Date.ParseStrategy` (for the HTTP date in `Retry-After`).
+10. The JWT expiry check was duplicated in `CodexProvider`; it is now one helper, `isExpired`. The store now asks for `loginRepair` only when the provider is available, so a refresh calls `locateCodex()` at most twice. These are a few `stat` calls on the main actor, which I judged fine.
+
+New tests cover the Retry-After parsing and capping, overflow inputs, the server-judged login acceptance, an app server that exits at once, and a CLI that can't be started. 63 tests pass, with no compiler warnings. After reinstalling, the app logged `fetch ok` for both providers, with no Keychain prompt.
+
 ### Why
 Each provider is one type behind `UsageProvider`, so a third provider is one new file plus one line in `/Sources/AIUsage/AIUsageApp.swift`. Typed throws (`throws(UsageError)`) keep every failure in one enum, which drives the panel message, the log category, whether to back off and whether to keep stale data. Read-only credentials and a click-only repair follow from Step 1: both tokens belong to other tools.
 

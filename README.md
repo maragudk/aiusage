@@ -31,7 +31,7 @@ The app calls `GET https://chatgpt.com/backend-api/wham/usage` with the ChatGPT 
 If the Codex login has expired, the panel shows a "Refresh Codex login" button. When you click it:
 
 1. The app starts `codex app-server` and asks it to refresh its own token (`account/read` with `refreshToken: true`). This doesn't use any of your Codex usage.
-2. If the token is still expired after that, the app runs `codex login`, which opens the sign-in page in your browser.
+2. If the usage endpoint still rejects the login after that, the app runs `codex login`, which opens the sign-in page in your browser.
 
 Neither step runs unless you click the button.
 

@@ -4,6 +4,8 @@ import Foundation
 public struct Backoff: Sendable, Equatable {
     static let initialDelay: TimeInterval = 5 * 60
     static let maximumDelay: TimeInterval = 60 * 60
+    /// A server's `Retry-After` is honoured up to this, to guard against absurd values.
+    static let maximumRetryAfter: TimeInterval = 24 * 60 * 60
 
     public private(set) var failures = 0
     /// No automatic attempt should be made before this time.
@@ -18,12 +20,13 @@ public struct Backoff: Sendable, Equatable {
         return now >= notBefore
     }
 
-    /// Records a failure. A server-provided `retryAfter` is honoured when it is longer than the computed delay.
+    /// Records a failure. The delay doubles from 5 minutes up to an hour, and a longer server-provided
+    /// `retryAfter` is honoured.
     public mutating func recordFailure(at now: Date, retryAfter: TimeInterval?) {
         failures += 1
-        let exponential = Self.initialDelay * pow(2, Double(failures - 1))
-        let delay = min(max(exponential, retryAfter ?? 0), Self.maximumDelay)
-        notBefore = now.addingTimeInterval(delay)
+        let exponential = min(Self.initialDelay * pow(2, Double(min(failures - 1, 16))), Self.maximumDelay)
+        let requested = retryAfter.flatMap { $0.isNaN ? nil : min(max($0, 0), Self.maximumRetryAfter) } ?? 0
+        notBefore = now.addingTimeInterval(max(exponential, requested))
     }
 
     public mutating func recordSuccess() {

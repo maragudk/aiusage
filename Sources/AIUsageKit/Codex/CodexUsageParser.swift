@@ -129,7 +129,7 @@ private struct Window: Decodable {
         guard let usedPercent else {
             return nil
         }
-        let seconds = limitWindowSeconds.flatMap { $0.isFinite ? Int($0) : nil }
+        let seconds = limitWindowSeconds.flatMap { Int(exactly: $0.rounded()) }
         let windowName = CodexUsageParser.windowName(seconds: seconds, fallback: fallbackName)
         let name = if let namePrefix { "\(namePrefix) · \(windowName)" } else { windowName }
         let resetsAt: Date? = if let resetAt, resetAt > 0 {

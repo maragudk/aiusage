@@ -3,8 +3,12 @@ import ServiceManagement
 import SwiftUI
 
 /// Registers the app as a login item with `SMAppService.mainApp`.
+///
+/// The checkbox shows whether the app is registered, which includes registrations still waiting for
+/// approval in System Settings. Mirroring only `.enabled` would make a pending registration look off,
+/// and the resulting change would unregister it.
 struct LaunchAtLoginToggle: View {
-    @State private var isEnabled = SMAppService.mainApp.status == .enabled
+    @State private var isEnabled = Self.isRegistered
 
     var body: some View {
         Toggle("Launch at login", isOn: $isEnabled)
@@ -13,16 +17,20 @@ struct LaunchAtLoginToggle: View {
                 setEnabled(newValue)
             }
             .onAppear {
-                isEnabled = SMAppService.mainApp.status == .enabled
+                isEnabled = Self.isRegistered
             }
     }
 
+    private static var isRegistered: Bool {
+        let status = SMAppService.mainApp.status
+        return status == .enabled || status == .requiresApproval
+    }
+
     private func setEnabled(_ enable: Bool) {
-        let service = SMAppService.mainApp
-        let isRegistered = service.status == .enabled || service.status == .requiresApproval
-        guard enable != isRegistered else {
+        guard enable != Self.isRegistered else {
             return
         }
+        let service = SMAppService.mainApp
         do {
             if enable {
                 try service.register()
@@ -32,7 +40,7 @@ struct LaunchAtLoginToggle: View {
             Log.app.notice("launch at login enabled=\(enable, privacy: .public) status=\(service.status.rawValue, privacy: .public)")
         } catch {
             Log.app.error("launch at login change failed enabled=\(enable, privacy: .public)")
-            isEnabled = service.status == .enabled
+            isEnabled = Self.isRegistered
         }
         if service.status == .requiresApproval {
             SMAppService.openSystemSettingsLoginItems()

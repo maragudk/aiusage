@@ -15,7 +15,7 @@ struct PanelView: View {
                     Divider()
                 }
                 FooterView(
-                    lastRefresh: store.lastRefresh,
+                    lastUpdated: store.lastUpdated,
                     isRefreshing: store.isRefreshing,
                     now: context.date,
                     refresh: store.refreshNow

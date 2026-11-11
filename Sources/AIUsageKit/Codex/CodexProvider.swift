@@ -54,7 +54,7 @@ public struct CodexProvider: UsageProvider {
         guard let codex = locateCodex() else {
             return nil
         }
-        let repair = CodexLoginRepair(codex: codex, version: version, isLoginValid: { [self] in hasUnexpiredToken() })
+        let repair = CodexLoginRepair(codex: codex, version: version, isLoginValid: { [self] in await isLoginAccepted() })
         return LoginRepair(
             title: "Refresh Codex login",
             help: "Lets Codex refresh its own login. If that isn't enough, Codex opens its sign-in page in your browser.",
@@ -64,7 +64,7 @@ public struct CodexProvider: UsageProvider {
 
     public func fetchLimits() async throws(UsageError) -> [UsageLimit] {
         let auth = try readAuth()
-        if let expiry = CodexAuth.expiry(ofJWT: auth.accessToken), now() >= expiry {
+        if isExpired(auth) {
             throw .loginExpired(Self.expiredMessage)
         }
         var request = URLRequest(url: Self.endpoint)
@@ -86,14 +86,29 @@ public struct CodexProvider: UsageProvider {
         return try CodexAuth.parse(data)
     }
 
-    /// Whether `auth.json` now holds a token that isn't known to be expired.
-    private func hasUnexpiredToken() -> Bool {
-        guard let auth = try? readAuth() else {
+    /// Whether the token's JWT `exp` has passed. A token that isn't a readable JWT is left to the server to judge.
+    private func isExpired(_ auth: CodexAuth) -> Bool {
+        guard let expiry = CodexAuth.expiry(ofJWT: auth.accessToken) else {
             return false
         }
-        guard let expiry = CodexAuth.expiry(ofJWT: auth.accessToken) else {
+        return now() >= expiry
+    }
+
+    /// Whether the server accepts the stored login, judged by an actual usage request.
+    ///
+    /// Only login failures count as rejection. A network or server error says nothing about the login,
+    /// so it shouldn't send the user to the browser.
+    func isLoginAccepted() async -> Bool {
+        do {
+            _ = try await fetchLimits()
             return true
+        } catch {
+            switch error {
+            case .loginExpired, .notLoggedIn:
+                return false
+            case .unsupported, .keychainDenied, .keychain, .rateLimited, .server, .http, .network, .invalidResponse:
+                return true
+            }
         }
-        return now() < expiry
     }
 }

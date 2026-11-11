@@ -5,23 +5,23 @@ import Foundation
 /// 1. Starts `codex app-server` and sends `account/read` with `refreshToken: true`. Codex then refreshes
 ///    its stored token with its own single-use refresh token and writes `auth.json` itself. This doesn't
 ///    start a model turn, so it doesn't spend usage.
-/// 2. If the token is still expired after that, for example because the refresh token has expired too,
-///    it runs `codex login`, which opens the browser sign-in, and waits for it to exit.
+/// 2. If the server still rejects the login after that, for example because the refresh token has expired
+///    too, it runs `codex login`, which opens the browser sign-in, and waits for it to exit.
 ///
 /// The app never calls the OpenAI token endpoint and never writes `auth.json`.
 /// Process output is discarded and never logged, because it can contain account details.
 struct CodexLoginRepair: Sendable {
     let codex: URL
     let version: String
-    /// Whether `auth.json` now holds a usable token.
-    let isLoginValid: @Sendable () -> Bool
+    /// Whether the server accepts the login now in `auth.json`.
+    let isLoginValid: @Sendable () async -> Bool
     var refreshTimeout: Duration = .seconds(30)
     var loginTimeout: Duration = .seconds(10 * 60)
 
     func run(progress: @escaping @Sendable (String) -> Void) async {
         progress("Asking Codex to refresh its login…")
         let didAnswer = await refreshThroughAppServer()
-        let isValid = isLoginValid()
+        let isValid = await isLoginValid()
         Log.login.notice("codex app-server refresh answered=\(didAnswer, privacy: .public) valid=\(isValid, privacy: .public)")
         guard !isValid else {
             return
@@ -43,11 +43,12 @@ struct CodexLoginRepair: Sendable {
         process.standardInput = input
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
-        let exited = Self.exitStatus(of: process)
+        let (exited, exitContinuation) = Self.exitStatus(of: process)
 
         do {
             try process.run()
         } catch {
+            exitContinuation.finish()
             Log.login.error("could not start codex app-server")
             return false
         }
@@ -56,6 +57,8 @@ struct CodexLoginRepair: Sendable {
         defer { watchdog.cancel() }
 
         let writer = input.fileHandleForWriting
+        // Writing after the app server has exited must fail with EPIPE rather than kill the app with SIGPIPE.
+        _ = fcntl(writer.fileDescriptor, F_SETNOSIGPIPE, 1)
         var didAnswer = false
         do {
             try Self.send(Self.initializeRequest(version: version), to: writer)
@@ -94,10 +97,11 @@ struct CodexLoginRepair: Sendable {
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
-        let exited = Self.exitStatus(of: process)
+        let (exited, exitContinuation) = Self.exitStatus(of: process)
         do {
             try process.run()
         } catch {
+            exitContinuation.finish()
             Log.login.error("could not start codex login")
             return -1
         }
@@ -140,18 +144,20 @@ struct CodexLoginRepair: Sendable {
     }
 
     /// A task that yields the exit status. Call before `run()` so the exit can't be missed.
-    private static func exitStatus(of process: Process) -> Task<Int32, Never> {
+    /// If `run()` throws, finish the returned continuation so the task ends.
+    private static func exitStatus(of process: Process) -> (Task<Int32, Never>, AsyncStream<Int32>.Continuation) {
         let (stream, continuation) = AsyncStream<Int32>.makeStream()
         process.terminationHandler = { process in
             continuation.yield(process.terminationStatus)
             continuation.finish()
         }
-        return Task {
+        let task = Task {
             for await status in stream {
                 return status
             }
             return -1
         }
+        return (task, continuation)
     }
 
     /// Terminates the process after a timeout unless the returned task is cancelled first.

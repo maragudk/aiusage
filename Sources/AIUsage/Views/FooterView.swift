@@ -4,7 +4,7 @@ import SwiftUI
 
 /// Last update time, Refresh, Launch at login and Quit.
 struct FooterView: View {
-    let lastRefresh: Date?
+    let lastUpdated: Date?
     let isRefreshing: Bool
     let now: Date
     let refresh: () -> Void
@@ -16,8 +16,8 @@ struct FooterView: View {
                     ProgressView()
                         .controlSize(.mini)
                     Text("Updating…")
-                } else if let lastRefresh {
-                    Text(UsageFormat.updated(lastRefresh, now: now))
+                } else if let lastUpdated {
+                    Text(UsageFormat.updated(lastUpdated, now: now))
                 }
                 Spacer()
                 Button("Refresh", systemImage: "arrow.clockwise", action: refresh)

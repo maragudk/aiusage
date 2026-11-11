@@ -34,7 +34,7 @@ public struct ClaudeProvider: UsageProvider {
     public var loginRepair: LoginRepair? { nil }
 
     public func fetchLimits() async throws(UsageError) -> [UsageLimit] {
-        let token = try ClaudeCredentials.accessToken(from: readCredentials(), now: now())
+        let token = try ClaudeCredentials.accessToken(from: await readCredentialsOffPool(), now: now())
         var request = URLRequest(url: Self.endpoint)
         request.httpMethod = "GET"
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -42,5 +42,23 @@ public struct ClaudeProvider: UsageProvider {
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         let data = try await http.get(request, provider: id, expiredMessage: Self.expiredMessage)
         return try ClaudeUsageParser.parse(data)
+    }
+
+    private static let keychainQueue = DispatchQueue(label: "dk.maragu.aiusage.keychain")
+
+    /// Reads the credentials on a dedicated queue. The Keychain read blocks while macOS shows its access
+    /// prompt, which must not tie up a thread of Swift's cooperative pool.
+    private func readCredentialsOffPool() async throws(UsageError) -> Data {
+        let read = readCredentials
+        let result = await withCheckedContinuation { (continuation: CheckedContinuation<Result<Data, UsageError>, Never>) in
+            Self.keychainQueue.async {
+                do throws(UsageError) {
+                    continuation.resume(returning: .success(try read()))
+                } catch {
+                    continuation.resume(returning: .failure(error))
+                }
+            }
+        }
+        return try result.get()
     }
 }
