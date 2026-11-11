@@ -56,7 +56,7 @@ cat > "$app/Contents/Info.plist" <<EOF
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Copyright © Markus Wüstenberg. MIT licence.</string>
+	<string>Copyright © Maragu ApS. MIT licence.</string>
 </dict>
 </plist>
 EOF
