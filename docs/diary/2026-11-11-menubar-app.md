@@ -152,3 +152,37 @@ Nothing.
 
 ### Future work
 None.
+
+## Step 4: Add a cropped screenshot to the README
+
+**Author:** builder
+
+### Prompt Context
+
+**Verbatim prompt:** Small task in the worktree /Users/markus/Developer/aiusage/.claude/worktrees/readme-screenshot (branch `worktree-readme-screenshot`) of AIUsage [...] Markus took a screenshot of the app's panel [...] Crop it so no wallpaper remains outside the panel. Make the area outside the rounded corners transparent [...] Save it as /docs/screenshot.png. Add it to /README.md near the top, right after the intro paragraph [...]
+**Interpretation:** Turn Markus's raw screenshot into a clean, transparent-cornered PNG of only the panel, and show it under the README intro.
+**Inferred intent:** The README should show what the app looks like, without a distracting wallpaper around the panel.
+
+### What I did
+Read pixel values of the 332x325 screenshot with a small Swift/CoreGraphics script. The panel's light border runs from x=19 to x=318 and from y=8 to y=316. Just outside that border is a one-pixel dark outline (x=18, x=319, y=7, y=317), which I left out. I cropped to 300x309 px starting at (19, 8) and clipped to an antialiased rounded rectangle with radius 6.5 px, so the corners are transparent. The result is `/docs/screenshot.png`. I added it to `/README.md` right after the intro paragraph, with alt text and a relative path. I checked the result by compositing it on magenta at 4x.
+
+### Why
+The wallpaper would otherwise show around the panel and in the corners, and look wrong on a white or dark GitHub page.
+
+### What worked
+Dumping luminance values around the top-left and bottom-right corners gave the exact edges and the corner radius, so no guessing was needed. The magenta composite showed no wallpaper slivers and an intact border.
+
+### What didn't work
+`python3 -c "import PIL"` fails with `ModuleNotFoundError: No module named 'PIL'`, so I used Swift with CoreGraphics and ImageIO instead. The sandbox also refused long commands that chained several steps (`This session is isolated in the worktree ... too complex to verify`), so I ran each step as its own command.
+
+### What I learned
+The corner radius in this screenshot is about 6 px, not the 10-12 px I was told to expect. The measured fit was a straight top edge starting about 3.6 px in from the corner at the top row, and the left edge about 4 px down. The screenshot is at 1x, so the image is small; it is not a retina capture.
+
+### What was tricky
+The panel is translucent, so there is no clean background colour to key out. A geometric mask is the only reliable way to get transparent corners.
+
+### What warrants review
+Open `/docs/screenshot.png` on both a light and a dark background and check the corners and the border. Check that the README renders the image under the intro paragraph.
+
+### Future work
+A 2x retina screenshot would look sharper on GitHub.

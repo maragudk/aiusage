@@ -2,6 +2,8 @@
 
 A macOS menu bar app that shows how much of your AI subscription limits you have used, for Claude and OpenAI Codex.
 
+![AIUsage panel showing Claude weekly and Fable usage, and Codex weekly usage](docs/screenshot.png)
+
 ## What it shows
 
 The menu bar shows only an icon, and the app has no Dock icon. Click the icon to open a small panel with one section per provider.
