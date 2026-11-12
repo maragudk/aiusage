@@ -66,3 +66,55 @@ Tests came first: `/Tests/AIUsageKitTests/ClaudeCredentialsTests.swift` (a fake 
 ### Future work
 - The real proof comes after Claude Code's next token refresh, when `mdat` changes: the app should keep logging `fetch ok provider=claude` with no prompt.
 - The footer text "Updated just now" wasn't checked on screen, because I can't open the menu bar panel. It is derived from `lastSuccess`, which the `fetch ok` lines confirm.
+
+## Step 2: Keep the panel's top edge under the menu bar icon
+
+**Author:** keychain-builder
+
+### Prompt Context
+
+**Verbatim prompt:** Added scope; this replaces "don't touch layout". Markus confirmed the UI bug is the panel's POSITION. In his screenshot the MenuBarExtra panel isn't attached under the menu bar icon: it floats noticeably lower, with a gap of roughly 100 px between the menu bar and the panel's top edge. Likely cause (verify): the panel's content height shrank after it was shown. [...] Fix it so the panel's top edge always sits directly under the menu bar whatever the content height: on first open, after state changes while open, and on later opens. Prefer the simplest robust fix. If you go beyond pure SwiftUI (e.g. adjusting the hosting NSWindow), keep it small and contained. Verify the size-change scenario as well as you can without screen-recording permission (e.g. log the window frame before and after a state change), and tell me what Markus should check visually. Record it in the same new diary file and commit it separately from the Keychain fix.
+**Interpretation:** Make sure the `.window` MenuBarExtra panel always hangs directly under its icon, whatever its height, and verify it without being able to see or click the real panel.
+**Inferred intent:** The panel should look attached to the menu bar like a native menu bar extra, not float loose after the content changes.
+
+### What I did
+First I tried to reproduce the drift with a scratch probe app (`scratchpad/panelprobe`, outside the repo). It is a `.window` MenuBarExtra with AIUsage-like content: a `TimelineView`, sections with limit rows or a wrapping error, dividers, and a footer with a spinner and a checkbox. The probe opens its own panel by sending a synthesized mouse-down to its `NSStatusBarWindow`, then logs window frames on `didResize`, `didMove` and `didBecomeKey`. Only one run opened the panel. In that run the panel's top was 2 pt under the status item window's bottom edge (`top=2124`, `statusBottom=2126`). The top stayed at 2124 while the content shrank from 212 to 84 pt and grew back, both open and closed. So the simple "bottom-left origin stays fixed" hypothesis didn't reproduce on macOS 27.
+
+Because the exact SwiftUI path that drops the panel couldn't be reproduced, I made the fix independent of the cause:
+
+- `/Sources/AIUsageKit/PanelPlacement.swift`: `PanelPlacement.pinnedFrame(for:statusItems:)` is pure geometry. It picks the panel's status item: one that overlaps the panel horizontally and isn't below it, because macOS keeps a status item window per display. It then returns the frame moved vertically so the top sits `gap` (2 pt) under that item, with size and x unchanged. Drift of up to 4 pt is left alone, so the app never fights the system's own placement.
+- `/Sources/AIUsage/Views/PanelWindowAnchor.swift`: an `NSViewRepresentable` whose `NSView` watches its own window for `didResize`, `didBecomeKey` and `didChangeScreen`. It also runs when it moves into the window. Each time, it re-pins the window with `setFrameOrigin`, using the frames of the app's own `NSStatusBarWindow`s. When it corrects a drift, it logs `panel repinned top=… to=… height=…` at `notice` level.
+- `/Sources/AIUsage/Views/PanelView.swift`: `.background(PanelWindowAnchor())` on the panel content.
+- `/Tests/AIUsageKitTests/PanelPlacementTests.swift`: 7 tests with frames taken from the probe's real measurement. They cover a panel already in place, one dropped below, one reaching into the menu bar, small drift, a right-aligned panel, no status item, and a status item on another display. I wrote them before `PanelPlacement`, but I didn't run them red separately. The first run, after I had written the type, passed.
+
+I verified the glue with a second scratch probe (`scratchpad/anchorprobe`) that compiles the real `PanelWindowAnchor.swift` and `PanelPlacement.swift`. It uses a borderless key-capable `NSPanel` hosting the SwiftUI content and a stand-in window class `FakeStatusBarWindow`, both at about (-20000, -5000), off every display, so nothing showed on Markus's screen. I compared a plain panel with an anchored one:
+
+- After a SwiftUI content change (shrink, grow, and shrink while hidden), both kept their top. AppKit's `preferredContentSize` sizing keeps the top-left too.
+- After a forced bottom-anchored shrink (`setFrame` with the same origin and a smaller height), the plain panel ended with `gap=42.0`, and the anchored one with `gap=2.0`. The log showed `panel repinned top=-5042 to=-5002`.
+- After moving the panel 100 pt down while hidden, then showing it and making it key, the plain panel showed `gap=142.0` and the anchored one `gap=2.0`.
+
+### Why
+Pinning on every resize and every open covers all three cases the lead listed: first open, a state change while open, and later opens. It doesn't depend on which SwiftUI or AppKit path moves the window. It's one small view in the app target plus one pure function with tests.
+
+### What worked
+- The off-screen anchored panel stayed 2 pt under its stand-in status item through both forced drifts.
+- All 7 placement tests passed; the full suite has 92 tests.
+
+### What didn't work
+- `button.performClick(nil)` on the `NSStatusBarButton` did nothing (`target=nil action=nil`), and so did `accessibilityPerformPress()` (`press=false`).
+- Sending both a synthesized mouse-down and mouse-up with `window.sendEvent` hung the probe: the button's tracking loop waited for a mouse-up that never came. Queuing the mouse-up with `NSApp.postEvent(_:atStart:)` first stopped the hang, but it opened the panel in only one run out of several.
+- `swiftc` of the probe with the app's anchor file failed with `error: no such module 'AIUsageKit'`. I removed the import in a scratch copy and added a stub `Log`.
+
+### What I learned
+- On this Mac, `NSApp.windows` lists three `NSStatusBarWindow`s for one status item: one at (4288, 2126) and two at (6920, 1130). That is one per display, so the anchor has to pick the one above the panel.
+- `screen.visibleFrame.maxY` was 2130 while the status item's bottom was 2126, so the visible frame isn't a reliable "under the menu bar" line here. The status item window is.
+
+### What was tricky
+- I couldn't open the real panel without accessibility permission, and the in-process click tricks were unreliable. The verification therefore tests the anchor code against forced drift, not against the exact SwiftUI behaviour Markus saw.
+
+### What warrants review
+- `/Sources/AIUsage/Views/PanelWindowAnchor.swift`: it finds status item windows by the private class name `NSStatusBarWindow`. If that name ever changes, the anchor does nothing, and the panel falls back to the system's placement.
+- Markus should check visually: open the panel, then click Refresh and watch the panel while the content changes height. Close and reopen it after a state change, such as Claude going from limits to an error. The panel's top edge should stay just under the icon each time. `/usr/bin/log show --predicate 'subsystem == "dk.maragu.aiusage" AND process == "AIUsage"' --last 10m | grep repinned` shows each correction, which also tells us how often the drift really happens.
+
+### Future work
+- If `panel repinned` never shows up in real use but the gap comes back, the drift comes from something the anchor doesn't observe, and it needs a new look.

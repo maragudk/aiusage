@@ -23,6 +23,7 @@ struct PanelView: View {
             }
             .padding(14)
             .frame(width: 300)
+            .background(PanelWindowAnchor())
         }
         .onAppear(perform: store.panelDidOpen)
         .task {
