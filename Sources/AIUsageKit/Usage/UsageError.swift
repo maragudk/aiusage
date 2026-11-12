@@ -15,8 +15,6 @@ public enum UsageError: Error, Equatable, Sendable {
     case keychainTimedOut
     /// The `security` tool that reads the Keychain couldn't be started.
     case keychainToolFailed
-    /// The whole fetch didn't finish in time.
-    case timedOut
     case rateLimited(retryAfter: TimeInterval?)
     case server(status: Int)
     case http(status: Int)
@@ -38,8 +36,6 @@ public enum UsageError: Error, Equatable, Sendable {
             "Reading the Keychain took too long. Trying again later."
         case .keychainToolFailed:
             "Couldn't run /usr/bin/security to read the Keychain."
-        case .timedOut:
-            "The update took too long. Trying again later."
         case .rateLimited:
             "Rate limited. Trying again later."
         case .server(let status):
@@ -62,7 +58,6 @@ public enum UsageError: Error, Equatable, Sendable {
         case .keychainReadFailed: "keychainReadFailed"
         case .keychainTimedOut: "keychainTimedOut"
         case .keychainToolFailed: "keychainToolFailed"
-        case .timedOut: "timedOut"
         case .rateLimited: "rateLimited"
         case .server: "server"
         case .http: "http"
@@ -75,7 +70,7 @@ public enum UsageError: Error, Equatable, Sendable {
     /// Whether automatic refreshes should back off after this error.
     public var shouldBackOff: Bool {
         switch self {
-        case .rateLimited, .server, .keychainTimedOut, .timedOut: true
+        case .rateLimited, .server, .keychainTimedOut: true
         case .notLoggedIn, .loginExpired, .keychainDenied, .keychainReadFailed, .keychainToolFailed, .http, .network,
              .invalidResponse, .unsupported: false
         }
@@ -85,7 +80,7 @@ public enum UsageError: Error, Equatable, Sendable {
     public var keepsLastData: Bool {
         switch self {
         case .rateLimited, .server, .network, .http, .invalidResponse, .keychainReadFailed, .keychainTimedOut,
-             .keychainToolFailed, .timedOut: true
+             .keychainToolFailed: true
         case .notLoggedIn, .loginExpired, .keychainDenied, .unsupported: false
         }
     }

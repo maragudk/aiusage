@@ -118,3 +118,50 @@ Pinning on every resize and every open covers all three cases the lead listed: f
 
 ### Future work
 - If `panel repinned` never shows up in real use but the gap comes back, the drift comes from something the anchor doesn't observe, and it needs a new look.
+
+## Step 3: Address the self-review and simplify
+
+**Author:** keychain-builder
+
+### Prompt Context
+
+**Verbatim prompt:** Your /code-review finished, and the result came to me. Findings, condensed, with my guidance. Lean towards simplification: the root cause is gone now that we read via `security`, so much of the new concurrency machinery isn't needed. 1. FetchTimeout.swift:9/13: the hand-rolled FirstOutcome/unstructured-task race breaks structured cancellation [...] Or drop it if the Command timeout plus the URLSession timeouts already bound everything. 2. UsageStore.swift:41/113: the per-provider refreshingIDs/pendingManualIDs machinery is mostly unreachable [...] Prefer the simple global guard. 3. ClaudeCredentials.swift:11: a 10 s timeout kills `security` while a password or Keychain prompt may be on screen [...] Use a longer timeout, about 60 s [...] 4. Command.swift:24: concurrent reads can stack two Keychain prompts. Serialise Claude credential reads, at most one in flight. 5. Command.swift:54/57: a grandchild holding stdout makes readToEnd block past the timeout, and the isRunning check races with natural exit [...] 6. Command.swift:37: duplicates the process/timeout logic in CodexLoginRepair. [...] If it's a big change, note it as future work in the diary instead. Then rerun `swift test`, reinstall, verify live as before, and finish the panel-position fix if not done.
+**Interpretation:** Act on the six review findings, preferring removal over more machinery, then test, reinstall and verify again.
+**Inferred intent:** Keep the fix as small as the real root cause allows, but make the one remaining timeout path correct.
+
+### What I did
+I ran the `code-review` skill at high effort over the Keychain diff. Its result went to the lead, who passed on six findings. My changes for each:
+
+1. I dropped `/Sources/AIUsageKit/Usage/FetchTimeout.swift`, its tests and the `UsageError.timedOut` case. Every fetch is now bounded without it: the Keychain read by `Command`'s timeout, and HTTP by the session's 20 s request and 30 s resource timeouts.
+2. I restored the original global `isRefreshing` guard and `needsManualRefresh` in `/Sources/AIUsage/UsageStore.swift`. The only changes left in that file are the `notice`-level `refresh` line and a doc comment that says why the guard can't get stuck now.
+3. `ClaudeCredentials.readTimeout` is now 60 s, so a person can answer a Keychain or unlock prompt before the app kills `security`. The README says 60 seconds.
+4. New `/Sources/AIUsageKit/Process/SingleFlight.swift`: it allows at most one operation in flight, and callers that arrive meanwhile share its result. `ClaudeProvider`'s default `init` wraps the Keychain read in one. The global guard already serialises refreshes, so this is a second safeguard against two stacked prompts.
+5. I rewrote `/Sources/AIUsageKit/Process/Command.swift` around events instead of a blocking `readToEnd()`. stdout comes through `readabilityHandler`, the exit through `terminationHandler`, and the deadline from a sleeping task. All three feed one `AsyncStream`. A run counts as exited when the exit event arrives before the deadline. Its output is then everything read before end of file, or before the deadline if a background child keeps stdout open. Otherwise the result is `.timedOut`: the process gets `Process.terminate()`, then SIGKILL after a 1 s grace if `process.isRunning` is still true. No thread blocks, so the dedicated dispatch queue is gone too.
+6. Moving `CodexLoginRepair` onto `Command` is left as future work. Its app-server path is an interactive stdin/stdout conversation that `Command` can't serve, so its exit and terminate helpers would stay anyway. Moving only `runLogin` would also need an `environment` parameter, and it would change a click-only path that I can't verify live without running `codex login`.
+
+I wrote the new tests first. The build then failed with `cannot find 'SingleFlight' in scope`, so I never ran the new `Command` tests against the old implementation on their own. They cover: a fast command returns without waiting for its timeout; a command whose background child holds stdout returns its output at the deadline; a timed-out command with such a child still returns on time; and two `SingleFlight` tests.
+
+### Why
+Reading through `security` removed the root cause, the unbounded `SecItemCopyMatching` wait. What's left only has to make the one subprocess reliably bounded and keep prompts from stacking.
+
+### What worked
+- `swift test`: 92 tests in 13 suites pass with no warnings. I ran `CommandTests` and `SingleFlightTests` five more times, and all passed.
+- After `script/install` the app logged `refresh reason=poll providers=claude,codex`, then `fetch ok provider=codex limits=1` and `fetch ok provider=claude limits=2` at 09:09:32, 290 ms after launch. No SecurityAgent was running.
+
+### What didn't work
+Nothing failed in this step.
+
+### What I learned
+- An `AsyncStream` can be iterated again after the first loop has exited; `Command`'s kill path does this to wait for the exit after SIGTERM.
+- Foundation's `Process` closes the parent's copy of the stdout pipe's write end. stdout therefore reaches end of file as soon as the command exits, unless a child still holds it. The "doesn't wait for the timeout" test checks this.
+
+### What was tricky
+- Deciding success versus timeout by the order of events, not by `isRunning`. That removed the race in which a command that had just exited was reported as timed out and its output was lost.
+
+### What warrants review
+- `/Sources/AIUsageKit/Process/Command.swift`: the event loop's two exit conditions, and SIGKILL by `processIdentifier` guarded by `isRunning`. Foundation has no SIGKILL API.
+- `/Sources/AIUsageKit/Claude/ClaudeProvider.swift`: the `SingleFlight` wrapper in the default `init`.
+
+### Future work
+- Move `CodexLoginRepair.runLogin` onto `Command`, with an `environment` parameter, once there is a safe way to test it live.
+- Claude Code's next token refresh, when the item's `mdat` changes from 2026-11-12 00:46:15Z, is the real-world test of the `security` read.

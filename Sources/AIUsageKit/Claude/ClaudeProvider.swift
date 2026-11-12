@@ -16,9 +16,19 @@ public struct ClaudeProvider: UsageProvider {
     private let now: @Sendable () -> Date
 
     public init(http: any HTTPClient = URLSessionHTTPClient.shared) {
+        // At most one Keychain read in flight, so overlapping fetches can't stack two Keychain prompts.
+        let reads = SingleFlight<Result<Data, UsageError>>()
         self.init(
             http: http,
-            readCredentials: { () async throws(UsageError) in try await ClaudeCredentials.readFromKeychain() },
+            readCredentials: { () async throws(UsageError) in
+                try await reads.run {
+                    do throws(UsageError) {
+                        return .success(try await ClaudeCredentials.readFromKeychain())
+                    } catch {
+                        return .failure(error)
+                    }
+                }.get()
+            },
             now: { Date() }
         )
     }

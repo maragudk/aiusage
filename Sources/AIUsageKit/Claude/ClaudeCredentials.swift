@@ -7,8 +7,9 @@ enum ClaudeCredentials {
 
     /// The `security` tool that reads the Keychain item.
     static let securityTool = URL(filePath: "/usr/bin/security")
-    /// How long one Keychain read may take. It only takes long when macOS shows an access prompt.
-    static let readTimeout: Duration = .seconds(10)
+    /// How long one Keychain read may take. It only takes long when macOS shows a prompt, such as an access
+    /// prompt or the password prompt of a locked keychain, so this leaves a person time to answer it.
+    static let readTimeout: Duration = .seconds(60)
 
     /// The access token from the stored credentials JSON, `{"claudeAiOauth": {"accessToken", "expiresAt"}}`.
     static func accessToken(from data: Data, now: Date) throws(UsageError) -> String {

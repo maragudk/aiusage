@@ -8,9 +8,27 @@ struct CommandTests {
     private let shell = URL(filePath: "/bin/sh")
 
     @Test
-    func `captures the output and exit status`() async {
+    func `captures the output and exit status without waiting for the timeout`() async {
+        let start = ContinuousClock.now
         let result = await Command.run(shell, arguments: ["-c", "printf 'hello'; exit 3"], timeout: .seconds(10))
         #expect(result == .exited(status: 3, output: Data("hello".utf8)))
+        #expect(ContinuousClock.now - start < .seconds(3))
+    }
+
+    @Test
+    func `a command that exits while a background child holds stdout returns its output at the deadline`() async {
+        let start = ContinuousClock.now
+        let result = await Command.run(shell, arguments: ["-c", "printf 'hello'; sleep 5 &"], timeout: .milliseconds(500))
+        #expect(result == .exited(status: 0, output: Data("hello".utf8)))
+        #expect(ContinuousClock.now - start < .seconds(3))
+    }
+
+    @Test
+    func `a command that runs too long times out even if a background child holds stdout`() async {
+        let start = ContinuousClock.now
+        let result = await Command.run(shell, arguments: ["-c", "sleep 5 & exec sleep 30"], timeout: .milliseconds(300))
+        #expect(result == .timedOut)
+        #expect(ContinuousClock.now - start < .seconds(3))
     }
 
     @Test

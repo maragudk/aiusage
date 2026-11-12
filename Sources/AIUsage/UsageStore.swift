@@ -18,28 +18,19 @@ final class UsageStore {
     /// Opening the panel refreshes a provider whose data is older than this,
     /// unless it was already tried within this time.
     static let panelRefreshAge: TimeInterval = 60
-    /// The longest one provider's fetch may take. It's longer than the Keychain read timeout plus the
-    /// HTTP timeout, so it only fires when something is stuck.
-    static let fetchTimeout = Duration.seconds(60)
 
     private(set) var sections: [ProviderSection]
-    /// The providers with a fetch in flight. Each provider has at most one, and a slow one doesn't hold up the others.
-    private(set) var refreshingIDs: Set<String> = []
+    private(set) var isRefreshing = false
 
     @ObservationIgnored private let providers: [any UsageProvider]
     @ObservationIgnored private var backoffs: [String: Backoff] = [:]
     @ObservationIgnored private var lastAttempts: [String: Date] = [:]
     @ObservationIgnored private var pollTask: Task<Void, Never>?
-    /// Providers that got a manual refresh while their fetch was in flight. They refresh again when it ends.
-    @ObservationIgnored private var pendingManualIDs: Set<String> = []
+    @ObservationIgnored private var needsManualRefresh = false
 
     init(providers: [any UsageProvider]) {
         self.providers = providers
         sections = providers.map { ProviderSection(id: $0.id, name: $0.name) }
-    }
-
-    var isRefreshing: Bool {
-        !refreshingIDs.isEmpty
     }
 
     var visibleSections: [ProviderSection] {
@@ -72,9 +63,15 @@ final class UsageStore {
         Task { await refresh(.manual) }
     }
 
-    /// Fetches every provider that is due, or only those in `ids`. Providers with a fetch in flight are skipped;
-    /// a manual refresh of one runs again when its fetch ends.
-    func refresh(_ reason: RefreshReason, only ids: Set<String>? = nil) async {
+    /// Fetches every provider that is due. Only one refresh runs at a time. That can't get stuck, because every
+    /// fetch is bounded: the Keychain read by its timeout, and HTTP requests by the session's timeouts.
+    func refresh(_ reason: RefreshReason) async {
+        guard !isRefreshing else {
+            if reason == .manual {
+                needsManualRefresh = true
+            }
+            return
+        }
         let now = Date()
         for provider in providers {
             let isAvailable = provider.isAvailable
@@ -85,36 +82,36 @@ final class UsageStore {
                 section.repairHelp = repair?.help
             }
         }
-        let candidates = providers.filter { ids?.contains($0.id) ?? true }
-        if reason == .manual {
-            pendingManualIDs.formUnion(candidates.map(\.id).filter(refreshingIDs.contains))
-        }
-        let due = candidates.filter { !refreshingIDs.contains($0.id) && isDue($0, reason: reason, now: now) }
+        let due = providers.filter { isDue($0, reason: reason, now: now) }
         guard !due.isEmpty else {
             return
         }
+        isRefreshing = true
+        defer { isRefreshing = false }
         for provider in due {
             lastAttempts[provider.id] = now
-            refreshingIDs.insert(provider.id)
         }
         Log.usage.notice("refresh reason=\(reason.rawValue, privacy: .public) providers=\(due.map(\.id).joined(separator: ","), privacy: .public)")
 
         await withTaskGroup(of: (String, Result<[UsageLimit], UsageError>).self) { group in
             for provider in due {
                 group.addTask {
-                    (provider.id, await provider.fetchLimits(timeout: Self.fetchTimeout))
+                    do throws(UsageError) {
+                        return (provider.id, .success(try await provider.fetchLimits()))
+                    } catch {
+                        return (provider.id, .failure(error))
+                    }
                 }
             }
             for await (id, result) in group {
                 apply(result, to: id)
-                refreshingIDs.remove(id)
             }
         }
 
-        let rerun = pendingManualIDs.intersection(due.map(\.id))
-        if !rerun.isEmpty {
-            pendingManualIDs.subtract(rerun)
-            await refresh(.manual, only: rerun)
+        if needsManualRefresh {
+            needsManualRefresh = false
+            isRefreshing = false
+            await refresh(.manual)
         }
     }
 

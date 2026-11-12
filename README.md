@@ -64,7 +64,7 @@ The app reads the `Claude Code-credentials` item with `/usr/bin/security find-ge
 
 The app doesn't use the Keychain API for this. Each time Claude Code refreshes its token, it updates the item, and that update removes the "Always Allow" that macOS stored for any other app. An app that reads the item directly therefore gets a new Keychain prompt after every token refresh.
 
-You don't normally see a Keychain prompt. If macOS does show one, the app waits 10 seconds for an answer. After that it shows "Reading the Keychain took too long" and tries again later, with a longer wait each time. If you click "Deny", the app stops reading the Keychain during automatic refreshes. Click Refresh to try again.
+You don't normally see a Keychain prompt. If macOS does show one, for example to unlock a locked keychain, the app waits 60 seconds for an answer. After that it shows "Reading the Keychain took too long" and tries again later, with a longer wait each time. If you click "Deny", the app stops reading the Keychain during automatic refreshes. Click Refresh to try again.
 
 The panel says the token expired only when its expiry time in the Keychain item has passed, or when the API rejects it with HTTP 401. A Keychain error has its own message.
 

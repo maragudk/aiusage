@@ -18,7 +18,7 @@ struct ClaudeCredentialsTests {
         let call = try #require(runner.calls.first)
         #expect(call.executable.path == "/usr/bin/security")
         #expect(call.arguments == ["find-generic-password", "-s", "Claude Code-credentials", "-a", "test-user", "-w"])
-        #expect(call.timeout == .seconds(10))
+        #expect(call.timeout == .seconds(60))
     }
 
     @Test
@@ -107,10 +107,9 @@ struct ClaudeCredentialsTests {
         .keychainReadFailed(status: 36),
         .keychainTimedOut,
         .keychainToolFailed,
-        .timedOut,
         .notLoggedIn(ClaudeCredentials.notLoggedInMessage),
     ])
-    func `Keychain and timeout errors don't say the token expired`(error: UsageError) {
+    func `Keychain errors don't say the token expired`(error: UsageError) {
         #expect(!error.message.localizedCaseInsensitiveContains("expired"))
         #expect(error.category != UsageError.loginExpired("").category)
     }
