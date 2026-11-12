@@ -50,7 +50,7 @@ struct UsageStoreTests {
     }
 
     @Test
-    func `opening the panel during backoff does not fetch until Retry-After has passed`() async {
+    func `polls during backoff do not fetch until Retry-After has passed`() async {
         let provider = ScriptedProvider(results: [
             .success([weekly]),
             .failure(.rateLimited(retryAfter: 900)),
@@ -59,34 +59,48 @@ struct UsageStoreTests {
         let store = makeStore(provider)
 
         await store.refresh(.poll)
-        clock.advance(120)
+        clock.advance(60)
         await store.refresh(.poll)
         #expect(provider.fetchCount == 2)
 
-        // Past the 60 s panel age and the 5 minute minimum backoff, but inside Retry-After.
-        clock.advance(400)
-        await store.refresh(.panelOpened)
-        await store.refresh(.poll)
+        // Every minute inside Retry-After is skipped, also past the 5 minute minimum backoff.
+        for _ in 0..<14 {
+            clock.advance(60)
+            await store.refresh(.poll)
+        }
         #expect(provider.fetchCount == 2)
 
-        clock.advance(501)
-        await store.refresh(.panelOpened)
+        clock.advance(60)
+        await store.refresh(.poll)
         #expect(provider.fetchCount == 3)
     }
 
     @Test
-    func `opening the panel soon after a fetch does not fetch`() async {
-        let provider = ScriptedProvider(results: [.success([weekly])])
+    func `polls back off exponentially from five minutes after repeated failures`() async {
+        let provider = ScriptedProvider(results: [
+            .failure(.rateLimited(retryAfter: nil)),
+            .failure(.rateLimited(retryAfter: nil)),
+            .success([weekly]),
+        ])
         let store = makeStore(provider)
 
         await store.refresh(.poll)
-        clock.advance(30)
-        await store.refresh(.panelOpened)
+        clock.advance(299)
+        await store.refresh(.poll)
         #expect(provider.fetchCount == 1)
 
-        clock.advance(61)
-        await store.refresh(.panelOpened)
+        clock.advance(1)
+        await store.refresh(.poll)
         #expect(provider.fetchCount == 2)
+
+        // The second failure doubles the wait to 10 minutes.
+        clock.advance(599)
+        await store.refresh(.poll)
+        #expect(provider.fetchCount == 2)
+
+        clock.advance(1)
+        await store.refresh(.poll)
+        #expect(provider.fetchCount == 3)
     }
 
     @Test

@@ -10,15 +10,11 @@ import Observation
 final class UsageStore {
     enum RefreshReason: String {
         case poll
-        case panelOpened
         /// A provider's login repair finished. Refreshes only that provider, to show the repaired state.
         case loginRepaired
     }
 
-    static let pollInterval = Duration.seconds(5 * 60)
-    /// Opening the panel refreshes a provider whose data is older than this,
-    /// unless it was already tried within this time.
-    static let panelRefreshAge: TimeInterval = 60
+    static let pollInterval = Duration.seconds(60)
 
     private(set) var sections: [ProviderSection]
     private(set) var isRefreshing = false
@@ -28,7 +24,6 @@ final class UsageStore {
 
     @ObservationIgnored private let providers: [any UsageProvider]
     @ObservationIgnored private var backoffs: [String: Backoff] = [:]
-    @ObservationIgnored private var lastAttempts: [String: Date] = [:]
     @ObservationIgnored private var pollTask: Task<Void, Never>?
     /// Providers whose login repair finished while a refresh was running.
     @ObservationIgnored private var pendingRepairs: Set<String> = []
@@ -70,10 +65,6 @@ final class UsageStore {
         }
     }
 
-    func panelDidOpen() {
-        Task { await refresh(.panelOpened) }
-    }
-
     /// Fetches every provider that is due, or only `providerID` when given. Only one refresh runs at a time. That
     /// can't get stuck, because every fetch is bounded: the Keychain read by its timeout, and HTTP requests by the
     /// session's timeouts.
@@ -94,15 +85,12 @@ final class UsageStore {
                 section.repairHelp = repair?.help
             }
         }
-        let due = providers.filter { (providerID == nil || $0.id == providerID) && isDue($0, reason: reason, now: now) }
+        let due = providers.filter { (providerID == nil || $0.id == providerID) && isDue($0, now: now) }
         guard !due.isEmpty else {
             return
         }
         isRefreshing = true
         defer { isRefreshing = false }
-        for provider in due {
-            lastAttempts[provider.id] = now
-        }
         Log.usage.notice("refresh reason=\(reason.rawValue, privacy: .public) providers=\(due.map(\.id).joined(separator: ","), privacy: .public)")
 
         await withTaskGroup(of: (String, Result<[UsageLimit], UsageError>).self) { group in
@@ -153,16 +141,9 @@ final class UsageStore {
         }
     }
 
-    private func isDue(_ provider: any UsageProvider, reason: RefreshReason, now: Date) -> Bool {
+    private func isDue(_ provider: any UsageProvider, now: Date) -> Bool {
         guard section(provider.id)?.isAvailable == true else {
             return false
-        }
-        if reason == .panelOpened {
-            let isStale = section(provider.id)?.lastSuccess.map { now.timeIntervalSince($0) > Self.panelRefreshAge } ?? true
-            let wasTriedRecently = lastAttempts[provider.id].map { now.timeIntervalSince($0) <= Self.panelRefreshAge } ?? false
-            guard isStale, !wasTriedRecently else {
-                return false
-            }
         }
         return backoffs[provider.id, default: Backoff()].allowsAttempt(at: now)
     }

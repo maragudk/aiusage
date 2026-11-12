@@ -18,7 +18,7 @@ Each limit has a row with:
 
 The panel shows every limit that the API returns, so a new window, such as a 5-hour limit, appears without a code change. The bar colour comes from the API's severity when it has one. When it doesn't, the bar turns orange at 75% and red at 90%.
 
-The app refreshes every 5 minutes. It also refreshes when you open the panel and the data is more than a minute old. The panel has no Refresh button. After HTTP 429 or 5xx responses, the app waits before it asks again, from 5 minutes up to an hour, or as long as the server's `Retry-After` header says. Opening the panel doesn't skip that wait.
+The app refreshes once a minute, so it asks each provider at most once a minute. Opening the panel doesn't refresh. The panel has no Refresh button. After HTTP 429 or 5xx responses, the app waits before it asks again, from 5 minutes up to an hour, or as long as the server's `Retry-After` header says.
 
 ## Providers
 

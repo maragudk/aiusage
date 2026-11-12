@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 /// The panel that opens from the menu bar icon.
@@ -23,13 +22,6 @@ struct PanelView: View {
             .padding(14)
             .frame(width: 300)
             .background(PanelWindowAnchor())
-        }
-        .onAppear(perform: store.panelDidOpen)
-        .task {
-            // The panel window becomes key each time it opens, also when SwiftUI keeps this view alive in between.
-            for await _ in NotificationCenter.default.notifications(named: NSWindow.didBecomeKeyNotification) {
-                store.panelDidOpen()
-            }
         }
     }
 }
