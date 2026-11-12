@@ -15,6 +15,8 @@ struct PanelWindowAnchor: NSViewRepresentable {
 
     final class AnchorView: NSView {
         private var observers: [any NSObjectProtocol] = []
+        /// Moving the window posts a move notification, which would re-enter `pinTop`.
+        private var isPinning = false
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -25,7 +27,12 @@ struct PanelWindowAnchor: NSViewRepresentable {
             guard let window else {
                 return
             }
-            let names = [NSWindow.didResizeNotification, NSWindow.didBecomeKeyNotification, NSWindow.didChangeScreenNotification]
+            // Moves count too: the menu bar item changes width when its label changes between icon and number,
+            // and the system may then put an open panel back where it was.
+            let names = [
+                NSWindow.didResizeNotification, NSWindow.didMoveNotification,
+                NSWindow.didBecomeKeyNotification, NSWindow.didChangeScreenNotification,
+            ]
             observers = names.map { name in
                 NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                     MainActor.assumeIsolated {
@@ -37,7 +44,7 @@ struct PanelWindowAnchor: NSViewRepresentable {
         }
 
         private func pinTop() {
-            guard let window else {
+            guard let window, !isPinning else {
                 return
             }
             // The app's own status item windows; macOS keeps one per display.
@@ -50,6 +57,8 @@ struct PanelWindowAnchor: NSViewRepresentable {
                 return
             }
             Log.app.notice("panel repinned top=\(Int(frame.maxY), privacy: .public) to=\(Int(pinned.maxY), privacy: .public) height=\(Int(frame.height), privacy: .public)")
+            isPinning = true
+            defer { isPinning = false }
             window.setFrameOrigin(pinned.origin)
         }
     }

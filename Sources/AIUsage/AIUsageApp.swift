@@ -7,8 +7,10 @@ struct AIUsageApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
 
     var body: some Scene {
-        MenuBarExtra("AIUsage", systemImage: "gauge.with.dots.needle.33percent") {
+        MenuBarExtra {
             PanelView(store: appDelegate.store)
+        } label: {
+            MenuBarLabel(store: appDelegate.store)
         }
         .menuBarExtraStyle(.window)
     }

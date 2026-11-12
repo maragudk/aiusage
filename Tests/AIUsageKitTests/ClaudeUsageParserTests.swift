@@ -22,6 +22,18 @@ struct ClaudeUsageParserTests {
     }
 
     @Test
+    func `only the weekly_all limit has the overall weekly role`() throws {
+        let limits = try ClaudeUsageParser.parse(Fixture.data("claude-usage"))
+        #expect(limits.map(\.role) == [.overallWeekly, nil])
+    }
+
+    @Test
+    func `the seven_day fallback has the overall weekly role`() throws {
+        let limits = try ClaudeUsageParser.parse(Fixture.data("claude-usage-legacy"))
+        #expect(limits.map(\.role) == [nil, .overallWeekly])
+    }
+
+    @Test
     func `falls back to five_hour and seven_day when limits is missing`() throws {
         let limits = try ClaudeUsageParser.parse(Fixture.data("claude-usage-legacy"))
 

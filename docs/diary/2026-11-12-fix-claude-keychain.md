@@ -165,3 +165,63 @@ Nothing failed in this step.
 ### Future work
 - Move `CodexLoginRepair.runLogin` onto `Command`, with an `environment` parameter, once there is a safe way to test it live.
 - Claude Code's next token refresh, when the item's `mdat` changes from 2026-11-12 00:46:15Z, is the real-world test of the `security` read.
+
+## Step 4: Show the Claude weekly percentage in the menu bar
+
+**Author:** keychain-builder
+
+### Prompt Context
+
+**Verbatim prompt:** Can you make the app icon the weekly claude usage percentage? [...] The menu bar item shows Claude's overall weekly percentage as text, e.g. `86%`, INSTEAD of the gauge SF Symbol. Use the limit the Claude provider maps from `weekly_all` (named "Weekly"), not Fable or other scoped limits. [...] Fallback: show the existing gauge icon when there is no current value [...]. Keep the panel's top edge pinned under the menu bar item. [...] Accessibility: give the item an accessibility label such as "Claude weekly usage 86%". [...] Tests for the selection and fallback logic as a pure function. [...] Mid-task change from Markus: drop the percent sign. The menu bar shows just the number, e.g. `86`. Keep the accessibility label with the percentage.
+**Interpretation:** Replace the icon with the rounded weekly number, picked by a stable identifier. Fall back to the icon whenever the panel wouldn't show the value as current. Keep the panel pinned when the item changes width.
+**Inferred intent:** A glanceable number in the bar, with no way for it to show stale or wrong data.
+
+### What I did
+- `UsageLimit` has a new `role: Role?` with one case, `.overallWeekly`. Limit IDs were `"0-weekly_all-"` or the fallback `"seven_day"`, with the index in them, and the only other marker was the display name, so there was no stable identifier. `ClaudeUsageParser` sets the role from the API `kind == "weekly_all"`, and for the legacy `seven_day` fallback. A scoped limit or a lookalike named "Weekly" gets nil.
+- `/Sources/AIUsageKit/Usage/MenuBarUsage.swift`: the pure function `weeklyPercent(limits:error:) -> Int?`. It returns nil when the section has any error, because the panel dims its rows then, and the number follows the panel. Otherwise it returns the rounded percent of the first `.overallWeekly` limit, using `UsageFormat.clampedInt`, which is the panel's rounding.
+- `UsageStore.menuBarPercent` applies it to the visible Claude section. A missing, loading or error section gives nil.
+- `/Sources/AIUsage/Views/MenuBarLabel.swift` is the new `MenuBarExtra` label. It shows the number, or the old gauge `Label` when nil.
+- The anchor now also reacts to `didMoveNotification`.
+- README: the "only an icon" sentence is replaced.
+- Tests: `MenuBarUsageTests` (7), two role tests in `ClaudeUsageParserTests`, and one `PanelPlacementTests` case with icon widths from 24 to 58 pt. The suite has 102 tests and passes.
+
+I wrote the implementation and tests in one go, so I never saw the new tests fail first.
+
+### Why
+A template image, not `Text`, because of what a probe showed (below). The `didMove` observer is cheap insurance: the pin stays correct if the system moves an open panel after the item's width changes. It can't loop, because the second call finds the frame already pinned.
+
+### What worked
+`scratchpad/labelprobe/probe.swift` is a real `MenuBarExtra` with the same kind of label, and it dumped the `NSStatusBarButton` after each change:
+
+- Icon: image is a template, accessibility title "Gauge With Dots And Needle At 33 Percent", window width 32.
+- `Text("86").monospacedDigit()`: the button has `title='86'`, no image, font `.AppleSystemUIFont 13`, and the `.accessibilityLabel` was not applied (accessibility title `86`). The SwiftUI font and label modifiers are lost.
+- `Image(nsImage:)` with a template image: the button has the image, and its accessibility title is the image's `accessibilityDescription`, "Claude weekly usage 86%". Window widths were 25 for "9", 33 for "86", and 32 again for the icon.
+
+I rendered the same drawing code to a PNG at 4x (`scratchpad/labelprobe/render.png`) for 9, 10, 86, 88 and 100. The digits sit centred in an 18 pt box, and 10, 86 and 88 all have width 17. After `script/install` the log shows `fetch ok provider=claude limits=2` at launch.
+
+### What didn't work
+- `Text(...).monospacedDigit().accessibilityLabel(...)` in the label, as the lead's note suggested. See above: it ends up as a plain title.
+- I tried to find the live status item's window with `CGWindowListCopyWindowInfo` by owner name and PID, and it returned nothing, so I couldn't confirm from outside that the installed app shows the number.
+
+### What I learned
+- A `MenuBarExtra` label's `Text` becomes the button's plain title. Use an image for control of font or accessibility.
+- Status item windows change width with the label (25 to 33 to 32 pt in the probe), but their y and height don't. The pin only looks at y and at horizontal overlap with the 300 pt panel, so width changes don't affect it. The placement test covers that.
+
+### What was tricky
+- The weight and size of the digits: `NSFont.menuBarFont(ofSize: 0)` gives 13 pt, and I used its size with `monospacedDigitSystemFont` at regular weight. Whether that matches neighbouring items at the pixel level needs a human look.
+
+### What warrants review
+- `/Sources/AIUsage/Views/MenuBarLabel.swift`: the hand-drawn template image. It draws black text in a drawing handler, so it re-renders at the display's scale.
+- `/Sources/AIUsage/UsageStore.swift`: `menuBarPercent` matches the section id `"claude"`.
+
+### Future work
+- Markus's visual check (see the report).
+
+### Self-review
+I ran `/code-review` at medium effort over the diff. It gave seven findings. What I did:
+
+- Fixed: `didMoveNotification` re-enters `pinTop` through `setFrameOrigin`. It stops today because the second call finds the frame in place, but a window that the system clamps could loop. `AnchorView` now has an `isPinning` flag.
+- Fixed: the image height is fixed at 18 pt, so a larger menu bar font could clip. It is now `max(18, ascender - descender)`.
+- Kept: "any error shows the icon, so a transient error makes the number flip to the icon". That is Markus's rule: the number shows only when the panel shows the value as current, and the panel dims last-known data. It's a product choice to revisit if the flicker is annoying.
+- Kept: the doubt that VoiceOver gets the image's `accessibilityDescription`. The probe showed the status item button's accessibility title is exactly "Claude weekly usage 86%".
+- Not changed: caching the image per number (cheap to build), a test of the label (a view; the logic is in the tested pure function), the hard-coded `"claude"` id (same as the rest of the app's provider ids), and a fallback if the API renames `weekly_all` (speculative; the icon is the safe failure).

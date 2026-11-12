@@ -42,6 +42,14 @@ final class UsageStore {
         visibleSections.compactMap(\.lastSuccess).max()
     }
 
+    /// The number the menu bar shows instead of its icon, or nil when it should show the icon.
+    var menuBarPercent: Int? {
+        guard let claude = visibleSections.first(where: { $0.id == "claude" }) else {
+            return nil
+        }
+        return MenuBarUsage.weeklyPercent(limits: claude.limits, error: claude.error)
+    }
+
     /// Starts polling. The first refresh happens right away.
     func start() {
         guard pollTask == nil else {

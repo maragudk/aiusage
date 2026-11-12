@@ -36,6 +36,18 @@ struct PanelPlacementTests {
     }
 
     @Test
+    func `the pin does not depend on the icon's width`() {
+        // The status item window grows from the icon (32 pt) to a number (about 30 pt) and back, and its left
+        // edge moves with it, because the menu bar packs items from the right.
+        let panel = CGRect(x: 4288, y: 1812, width: 300, height: 212)
+        for width in [24.0, 32, 40, 58] {
+            let item = CGRect(x: 4320 - width, y: 2126, width: width, height: 39)
+            let pinned = PanelPlacement.pinnedFrame(for: panel, statusItems: [item, otherDisplayItem])
+            #expect(pinned == CGRect(x: 4288, y: 1912, width: 300, height: 212))
+        }
+    }
+
+    @Test
     func `a panel right-aligned to an icon near the screen edge uses that icon`() {
         let panel = CGRect(x: 4020, y: 1800, width: 300, height: 212)
         let pinned = PanelPlacement.pinnedFrame(for: panel, statusItems: [otherDisplayItem, statusItem])

@@ -18,13 +18,18 @@ enum ClaudeUsageParser {
         if limits.isEmpty {
             limits = [
                 response.fiveHour?.usageLimit(id: "five_hour", name: "5-hour"),
-                response.sevenDay?.usageLimit(id: "seven_day", name: "Weekly"),
+                response.sevenDay?.usageLimit(id: "seven_day", name: "Weekly", role: .overallWeekly),
             ].compactMap(\.self)
         }
         guard !limits.isEmpty else {
             throw .invalidResponse
         }
         return limits
+    }
+
+    /// The role of a limit `kind`, from the API's identifier and never from the row name.
+    static func role(kind: String?) -> UsageLimit.Role? {
+        kind?.lowercased() == "weekly_all" ? .overallWeekly : nil
     }
 
     /// The row name for a limit `kind`, with the scope's model name for scoped limits.
@@ -108,7 +113,8 @@ private struct Limit: Decodable {
             name: ClaudeUsageParser.name(kind: kind, modelName: modelName),
             percentUsed: percent,
             resetsAt: resetsAt.flatMap(ISO8601.date(from:)),
-            severity: Severity(apiValue: severity)
+            severity: Severity(apiValue: severity),
+            role: ClaudeUsageParser.role(kind: kind)
         )
     }
 }
@@ -155,10 +161,10 @@ private struct Window: Decodable {
         resetsAt = container.lenient(String.self, forKey: .resetsAt)
     }
 
-    func usageLimit(id: String, name: String) -> UsageLimit? {
+    func usageLimit(id: String, name: String, role: UsageLimit.Role? = nil) -> UsageLimit? {
         guard let utilization else {
             return nil
         }
-        return UsageLimit(id: id, name: name, percentUsed: utilization, resetsAt: resetsAt.flatMap(ISO8601.date(from:)), severity: nil)
+        return UsageLimit(id: id, name: name, percentUsed: utilization, resetsAt: resetsAt.flatMap(ISO8601.date(from:)), severity: nil, role: role)
     }
 }

@@ -9,13 +9,21 @@ public struct UsageLimit: Sendable, Equatable, Identifiable {
     public let resetsAt: Date?
     /// The severity reported by the API, if any.
     public let severity: Severity?
+    /// What kind of limit this is, when something outside the panel needs to find it. Never derived from `name`.
+    public let role: Role?
 
-    public init(id: String? = nil, name: String, percentUsed: Double, resetsAt: Date?, severity: Severity?) {
+    public enum Role: Sendable, Equatable {
+        /// Claude's weekly limit over all models, not a model-scoped one.
+        case overallWeekly
+    }
+
+    public init(id: String? = nil, name: String, percentUsed: Double, resetsAt: Date?, severity: Severity?, role: Role? = nil) {
         self.id = id ?? name
         self.name = name
         self.percentUsed = percentUsed
         self.resetsAt = resetsAt
         self.severity = severity
+        self.role = role
     }
 
     /// The API severity if there is one, and otherwise one from the percentage thresholds.
