@@ -59,18 +59,18 @@ struct UsageStoreTests {
         let store = makeStore(provider)
 
         await store.refresh(.poll)
-        clock.advance(60)
+        clock.advance(120)
         await store.refresh(.poll)
         #expect(provider.fetchCount == 2)
 
-        // Every minute inside Retry-After is skipped, also past the 5 minute minimum backoff.
-        for _ in 0..<14 {
-            clock.advance(60)
+        // Every poll inside Retry-After is skipped, also past the 5 minute minimum backoff.
+        for _ in 0..<7 {
+            clock.advance(120)
             await store.refresh(.poll)
         }
         #expect(provider.fetchCount == 2)
 
-        clock.advance(60)
+        clock.advance(120)
         await store.refresh(.poll)
         #expect(provider.fetchCount == 3)
     }

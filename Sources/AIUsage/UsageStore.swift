@@ -14,7 +14,7 @@ final class UsageStore {
         case loginRepaired
     }
 
-    static let pollInterval = Duration.seconds(60)
+    static let pollInterval = Duration.seconds(120)
 
     private(set) var sections: [ProviderSection]
     private(set) var isRefreshing = false
@@ -165,6 +165,7 @@ final class UsageStore {
         case .failure(let error):
             if error.shouldBackOff {
                 backoffs[id, default: Backoff()].recordFailure(at: now, retryAfter: error.retryAfter)
+                logRateLimit(error, provider: id, now: now)
             }
             update(id) { section in
                 section.error = error
@@ -174,6 +175,16 @@ final class UsageStore {
             }
             Log.usage.error("fetch failed provider=\(id, privacy: .public) category=\(error.category, privacy: .public)")
         }
+    }
+
+    /// Logs a 429 with its `Retry-After` and the resulting wait, to learn the real rate limit window.
+    private func logRateLimit(_ error: UsageError, provider id: String, now: Date) {
+        guard case .rateLimited(let retryAfter) = error else {
+            return
+        }
+        let backoff = backoffs[id, default: Backoff()].notBefore.map { Int($0.timeIntervalSince(now)) } ?? 0
+        let retryAfterText = retryAfter.map { String(Int($0.rounded())) } ?? "none"
+        Log.usage.notice("rate limited provider=\(id, privacy: .public) retryAfter=\(retryAfterText, privacy: .public) backoff=\(backoff, privacy: .public)")
     }
 
     private func section(_ id: String) -> ProviderSection? {
