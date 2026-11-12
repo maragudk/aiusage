@@ -29,7 +29,7 @@ public enum UsageError: Error, Equatable, Sendable {
         case .notLoggedIn(let message), .loginExpired(let message), .unsupported(let message):
             message
         case .keychainDenied:
-            "Keychain access was denied. Click Refresh to ask again."
+            "Keychain access was denied. Trying again later."
         case .keychainReadFailed(let status):
             "Couldn't read the Keychain (security exited with status \(status))."
         case .keychainTimedOut:
@@ -70,8 +70,8 @@ public enum UsageError: Error, Equatable, Sendable {
     /// Whether automatic refreshes should back off after this error.
     public var shouldBackOff: Bool {
         switch self {
-        case .rateLimited, .server, .keychainTimedOut: true
-        case .notLoggedIn, .loginExpired, .keychainDenied, .keychainReadFailed, .keychainToolFailed, .http, .network,
+        case .rateLimited, .server, .keychainTimedOut, .keychainDenied: true
+        case .notLoggedIn, .loginExpired, .keychainReadFailed, .keychainToolFailed, .http, .network,
              .invalidResponse, .unsupported: false
         }
     }

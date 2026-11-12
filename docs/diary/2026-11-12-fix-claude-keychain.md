@@ -246,3 +246,43 @@ I ran `/code-review` at medium effort over the diff. It gave seven findings. Wha
 
 ### Self-review
 Light, as asked. I wrote the function and tests together, so I never saw the tests fail first. The accessibility description still uses the real number, e.g. "Claude weekly usage 100%". `swift test`: 104 tests pass. After `script/install` the log shows `fetch ok provider=claude limits=2`.
+
+## Step 6: Remove the Refresh button and keep the menu bar number through errors
+
+**Author:** builder
+
+### Prompt Context
+
+**Verbatim prompt:** Small change in AIUsage, a Swift/SwiftUI macOS menu bar app. [...] Why: Markus clicked the panel's Refresh button six times in about five seconds. The app logged `reason=manual` six times between 10:46:10 and 10:46:15, and the sixth Claude fetch got `status=429`. He wants the manual refresh removed. [...] Make sure the 429 handling still holds: backoff honours Retry-After, and a refresh triggered by opening the panel during backoff does not bypass it. Check the code and add a test if one is missing. [...] Added scope from Markus: after the 429, the menu bar fell back to the gauge icon, which he doesn't want. Change `MenuBarUsage.weeklyPercent` (and its tests) so the menu bar keeps showing the latest known weekly number whenever one exists [...]
+**Interpretation:** Delete the button, its shortcut and the `.manual` reason. Rename the Codex repair re-poll. Prove with a test that panel-open refreshes obey the backoff. Make the menu bar remember the last weekly number.
+**Inferred intent:** Make it impossible for a user to hammer the APIs, and stop the menu bar flipping to the icon on a transient error.
+
+### What changed
+- `/Sources/AIUsage/Views/FooterView.swift`, `/Sources/AIUsage/Views/PanelView.swift`: the Refresh button, its `⌘R` shortcut and tooltip, and the `refresh` closure are gone. The "Updating…" spinner stays; it never depended on the button.
+- `/Sources/AIUsage/UsageStore.swift`: `RefreshReason.manual` and `refreshNow()` are gone, and so is the rule that manual refreshes skip backoff. The re-poll after a login repair is now `.loginRepaired` and takes `only: providerID`, so it refreshes just the repaired provider. Before, the repair's `.manual` refresh also fetched Claude, ignoring its backoff. `needsManualRefresh` became `pendingRepairs`, a set of provider ids: a repair that finishes during a running refresh would otherwise be dropped and the panel would keep showing the expired state. The store takes an injectable `now` clock so backoff can be tested.
+- `/Sources/AIUsageKit/Usage/MenuBarUsage.swift`: `weeklyPercent(limits:)` no longer takes an error. The store keeps `lastClaudeWeeklyPercent`, set on every successful Claude fetch, and `menuBarPercent` returns it while the Claude section is visible. The icon shows only before the first successful fetch (or when Claude is not set up). A successful fetch that has no weekly limit clears it, so the number can't go stale after the API drops the limit. The store drops `limits` on some errors (`loginExpired`, `notLoggedIn`, `keychainDenied`, `unsupported`), which is why the number lives in the store and not in the section.
+- `/Sources/AIUsageKit/Usage/UsageError.swift`: `.keychainDenied` used to stop all automatic refreshes until the user clicked Refresh. With no button that would be a dead end until the app restarts, so it now backs off like `.keychainTimedOut` and the message says "Trying again later." This is a behaviour change beyond the brief; see review notes.
+- `/Package.swift`: new test target `AIUsageTests` for the executable target, so `UsageStore` can be tested.
+- `/README.md`: Refresh and `⌘R` text removed, backoff and `Retry-After` described, the Keychain "Deny" sentence and the menu bar fallback sentence updated.
+
+### What I found about backoff
+The existing logic was already right for panel opens, with one gap. `isDue` checks `Backoff.allowsAttempt` for `.poll` and `.panelOpened` alike, and `Backoff.recordFailure` takes the larger of the exponential delay and `Retry-After` (capped at 24 h). Only `.manual` skipped it. `BackoffTests` covered `Backoff` alone but nothing covered the store, so I added `/Tests/AIUsageTests/UsageStoreTests.swift`: a 429 with `Retry-After: 900`, then a panel open at +400 s (past the 5 minute exponential delay, inside `Retry-After`) does not fetch, and one past it does. I did not run the test against a deliberately broken `isDue` first.
+
+### What worked
+`swift test`: all pass (104 in `AIUsageKitTests`, 6 in `AIUsageTests`). `@testable import AIUsage` works for an executable target with `@main`.
+
+### What didn't work
+Nothing failed.
+
+### What I learned
+- A backoff entry is only reset by a success, not by a non-backoff failure, so an old 429's delay can linger while the section shows `loginExpired`. The repair re-poll honours that delay. It can leave the repaired state unshown for a while in that rare case; I judged that safer than a bypass.
+
+### What was tricky
+Where to keep the menu bar number. `ProviderSection.limits` is cleared by some errors, so deriving it from the section can't work.
+
+### What warrants review
+- The `.keychainDenied` change above.
+- `pendingRepairs` handling at the end of `UsageStore.refresh`.
+
+### Future work
+None implied.

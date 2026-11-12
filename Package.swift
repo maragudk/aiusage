@@ -12,6 +12,10 @@ let package = Package(
         .target(name: "AIUsageKit"),
         .executableTarget(name: "AIUsage", dependencies: ["AIUsageKit"]),
         .testTarget(
+            name: "AIUsageTests",
+            dependencies: ["AIUsage", "AIUsageKit"]
+        ),
+        .testTarget(
             name: "AIUsageKitTests",
             dependencies: ["AIUsageKit"],
             resources: [.copy("Fixtures")]

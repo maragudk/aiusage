@@ -11,7 +11,8 @@ final class UsageStore {
     enum RefreshReason: String {
         case poll
         case panelOpened
-        case manual
+        /// A provider's login repair finished. Refreshes only that provider, to show the repaired state.
+        case loginRepaired
     }
 
     static let pollInterval = Duration.seconds(5 * 60)
@@ -21,15 +22,21 @@ final class UsageStore {
 
     private(set) var sections: [ProviderSection]
     private(set) var isRefreshing = false
+    /// The Claude weekly percentage from the latest successful fetch. It survives errors, so the menu bar keeps
+    /// showing the last known number.
+    private(set) var lastClaudeWeeklyPercent: Int?
 
     @ObservationIgnored private let providers: [any UsageProvider]
     @ObservationIgnored private var backoffs: [String: Backoff] = [:]
     @ObservationIgnored private var lastAttempts: [String: Date] = [:]
     @ObservationIgnored private var pollTask: Task<Void, Never>?
-    @ObservationIgnored private var needsManualRefresh = false
+    /// Providers whose login repair finished while a refresh was running.
+    @ObservationIgnored private var pendingRepairs: Set<String> = []
+    @ObservationIgnored private let now: () -> Date
 
-    init(providers: [any UsageProvider]) {
+    init(providers: [any UsageProvider], now: @escaping () -> Date = Date.init) {
         self.providers = providers
+        self.now = now
         sections = providers.map { ProviderSection(id: $0.id, name: $0.name) }
     }
 
@@ -44,10 +51,10 @@ final class UsageStore {
 
     /// The number the menu bar shows instead of its icon, or nil when it should show the icon.
     var menuBarPercent: Int? {
-        guard let claude = visibleSections.first(where: { $0.id == "claude" }) else {
+        guard visibleSections.contains(where: { $0.id == "claude" }) else {
             return nil
         }
-        return MenuBarUsage.weeklyPercent(limits: claude.limits, error: claude.error)
+        return lastClaudeWeeklyPercent
     }
 
     /// Starts polling. The first refresh happens right away.
@@ -67,20 +74,17 @@ final class UsageStore {
         Task { await refresh(.panelOpened) }
     }
 
-    func refreshNow() {
-        Task { await refresh(.manual) }
-    }
-
-    /// Fetches every provider that is due. Only one refresh runs at a time. That can't get stuck, because every
-    /// fetch is bounded: the Keychain read by its timeout, and HTTP requests by the session's timeouts.
-    func refresh(_ reason: RefreshReason) async {
+    /// Fetches every provider that is due, or only `providerID` when given. Only one refresh runs at a time. That
+    /// can't get stuck, because every fetch is bounded: the Keychain read by its timeout, and HTTP requests by the
+    /// session's timeouts.
+    func refresh(_ reason: RefreshReason, only providerID: String? = nil) async {
         guard !isRefreshing else {
-            if reason == .manual {
-                needsManualRefresh = true
+            if reason == .loginRepaired, let providerID {
+                pendingRepairs.insert(providerID)
             }
             return
         }
-        let now = Date()
+        let now = now()
         for provider in providers {
             let isAvailable = provider.isAvailable
             let repair = isAvailable ? provider.loginRepair : nil
@@ -90,7 +94,7 @@ final class UsageStore {
                 section.repairHelp = repair?.help
             }
         }
-        let due = providers.filter { isDue($0, reason: reason, now: now) }
+        let due = providers.filter { (providerID == nil || $0.id == providerID) && isDue($0, reason: reason, now: now) }
         guard !due.isEmpty else {
             return
         }
@@ -116,10 +120,9 @@ final class UsageStore {
             }
         }
 
-        if needsManualRefresh {
-            needsManualRefresh = false
+        if let id = pendingRepairs.popFirst() {
             isRefreshing = false
-            await refresh(.manual)
+            await refresh(.loginRepaired, only: id)
         }
     }
 
@@ -146,19 +149,12 @@ final class UsageStore {
             }
             update(id) { $0.repairStatus = nil }
             Log.login.notice("login repair finished provider=\(id, privacy: .public)")
-            await refresh(.manual)
+            await refresh(.loginRepaired, only: id)
         }
     }
 
     private func isDue(_ provider: any UsageProvider, reason: RefreshReason, now: Date) -> Bool {
         guard section(provider.id)?.isAvailable == true else {
-            return false
-        }
-        // Manual refreshes skip the backoff and ask for Keychain access again.
-        if reason == .manual {
-            return true
-        }
-        if section(provider.id)?.error == .keychainDenied {
             return false
         }
         if reason == .panelOpened {
@@ -172,10 +168,13 @@ final class UsageStore {
     }
 
     private func apply(_ result: Result<[UsageLimit], UsageError>, to id: String) {
-        let now = Date()
+        let now = now()
         switch result {
         case .success(let limits):
             backoffs[id, default: Backoff()].recordSuccess()
+            if id == "claude" {
+                lastClaudeWeeklyPercent = MenuBarUsage.weeklyPercent(limits: limits)
+            }
             update(id) { section in
                 section.limits = limits
                 section.error = nil

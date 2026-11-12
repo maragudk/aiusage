@@ -8,7 +8,7 @@ A macOS menu bar app that shows how much of your AI subscription limits you have
 
 The menu bar item shows the percentage of your Claude weekly limit that you have used, as a two-character number without a percent sign, such as `86`. Values below 10 have a leading zero (`09`), and 100 or more show `XX`, so the item keeps the same width. It is plain text in the menu bar's own colour, and VoiceOver reads the real number, such as "Claude weekly usage 86%" or "Claude weekly usage 100%". The app has no Dock icon. Click the number to open a small panel with one section per provider.
 
-The item shows a gauge icon instead of a number when there is no current value: before the first successful fetch, when the Claude section has an error, and when Claude is not set up. The panel dims last-known data after a temporary error, and the menu bar doesn't show that data as a number either. It shows only the "Weekly" limit, not "Fable" or other model limits.
+The item keeps showing the latest weekly number after an error, such as a 429, a network problem, a Keychain problem or an expired token, even when the panel dims or hides its rows. It shows a gauge icon instead only when the app has not fetched a number yet in this session, and when Claude is not set up. It shows only the "Weekly" limit, not "Fable" or other model limits.
 
 Each limit has a row with:
 
@@ -18,7 +18,7 @@ Each limit has a row with:
 
 The panel shows every limit that the API returns, so a new window, such as a 5-hour limit, appears without a code change. The bar colour comes from the API's severity when it has one. When it doesn't, the bar turns orange at 75% and red at 90%.
 
-The app refreshes every 5 minutes. It also refreshes when you open the panel and the data is more than a minute old. Click Refresh (⌘R) to refresh now. After HTTP 429 or 5xx responses, automatic refreshes back off, from 5 minutes up to an hour.
+The app refreshes every 5 minutes. It also refreshes when you open the panel and the data is more than a minute old. The panel has no Refresh button. After HTTP 429 or 5xx responses, the app waits before it asks again, from 5 minutes up to an hour, or as long as the server's `Retry-After` header says. Opening the panel doesn't skip that wait.
 
 ## Providers
 
@@ -66,7 +66,7 @@ The app reads the `Claude Code-credentials` item with `/usr/bin/security find-ge
 
 The app doesn't use the Keychain API for this. Each time Claude Code refreshes its token, it updates the item, and that update removes the "Always Allow" that macOS stored for any other app. An app that reads the item directly therefore gets a new Keychain prompt after every token refresh.
 
-You don't normally see a Keychain prompt. If macOS does show one, for example to unlock a locked keychain, the app waits 60 seconds for an answer. After that it shows "Reading the Keychain took too long" and tries again later, with a longer wait each time. If you click "Deny", the app stops reading the Keychain during automatic refreshes. Click Refresh to try again.
+You don't normally see a Keychain prompt. If macOS does show one, for example to unlock a locked keychain, the app waits 60 seconds for an answer. After that it shows "Reading the Keychain took too long" and tries again later, with a longer wait each time. If you click "Deny", the app shows "Keychain access was denied" and asks again later, with a longer wait each time.
 
 The panel says the token expired only when its expiry time in the Keychain item has passed, or when the API rejects it with HTTP 401. A Keychain error has its own message.
 

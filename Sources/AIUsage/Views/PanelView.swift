@@ -17,8 +17,7 @@ struct PanelView: View {
                 FooterView(
                     lastUpdated: store.lastUpdated,
                     isRefreshing: store.isRefreshing,
-                    now: context.date,
-                    refresh: store.refreshNow
+                    now: context.date
                 )
             }
             .padding(14)
