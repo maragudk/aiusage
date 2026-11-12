@@ -225,3 +225,24 @@ I ran `/code-review` at medium effort over the diff. It gave seven findings. Wha
 - Kept: "any error shows the icon, so a transient error makes the number flip to the icon". That is Markus's rule: the number shows only when the panel shows the value as current, and the panel dims last-known data. It's a product choice to revisit if the flicker is annoying.
 - Kept: the doubt that VoiceOver gets the image's `accessibilityDescription`. The probe showed the status item button's accessibility title is exactly "Claude weekly usage 86%".
 - Not changed: caching the image per number (cheap to build), a test of the label (a view; the logic is in the tested pure function), the hard-coded `"claude"` id (same as the rest of the app's provider ids), and a fallback if the API renames `weekly_all` (speculative; the icon is the safe failure).
+
+## Step 5: Make the menu bar text always two characters
+
+**Author:** label-builder
+
+### Prompt Context
+
+**Verbatim prompt:** The menu bar text is always exactly two characters, so its width never changes. 0-9 is zero-padded, 10-99 is unchanged, 100 or more shows `XX`. Put this formatting in a pure, tested function in AIUsageKit. The accessibility description keeps the real number. Make sure `XX` renders at the same width as two digits, or as close as the font allows, and say what you found.
+**Interpretation:** Add `MenuBarUsage.label(for:)`, use it in the view, and fix the image width so `XX` can't make the item wider.
+
+### What changed
+- `/Sources/AIUsageKit/Usage/MenuBarUsage.swift`: `label(for:)`. A negative value (which `clampedInt` can return) shows `00`.
+- `/Sources/AIUsage/Views/MenuBarLabel.swift`: draws the label. The image width comes from `"00"`, and the text is centred in it.
+- `/Tests/AIUsageKitTests/MenuBarUsageTests.swift`: 0, 1, 9, 10, 86, 99, 100, 101, 120, huge and negative values, plus rounding through `weeklyPercent`.
+- `/README.md`: the menu bar sentence.
+
+### What I found
+`monospacedDigitSystemFont` at 13 pt makes all digits 8.11 pt wide, so any two digits are 16.22 pt. `X` is not a digit and is 8.75 pt, so `XX` is 17.49 pt, 1.27 pt wider (after `ceil`, 18 vs 17 pt). Sizing the image from the text would have made the item jump by 1 pt at 100%. The image is now always the width of `00`, and `XX` is centred in it, so it overhangs by about 0.25 pt per side. That is inside the glyphs' side bearings, so it shouldn't clip, but I haven't looked at it at pixel level.
+
+### Self-review
+Light, as asked. I wrote the function and tests together, so I never saw the tests fail first. The accessibility description still uses the real number, e.g. "Claude weekly usage 100%". `swift test`: 104 tests pass. After `script/install` the log shows `fetch ok provider=claude limits=2`.

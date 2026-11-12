@@ -6,7 +6,7 @@ A macOS menu bar app that shows how much of your AI subscription limits you have
 
 ## What it shows
 
-The menu bar item shows the percentage of your Claude weekly limit that you have used, as a number without a percent sign, such as `86`. It is plain text in the menu bar's own colour, and VoiceOver reads it as "Claude weekly usage 86%". The app has no Dock icon. Click the number to open a small panel with one section per provider.
+The menu bar item shows the percentage of your Claude weekly limit that you have used, as a two-character number without a percent sign, such as `86`. Values below 10 have a leading zero (`09`), and 100 or more show `XX`, so the item keeps the same width. It is plain text in the menu bar's own colour, and VoiceOver reads the real number, such as "Claude weekly usage 86%" or "Claude weekly usage 100%". The app has no Dock icon. Click the number to open a small panel with one section per provider.
 
 The item shows a gauge icon instead of a number when there is no current value: before the first successful fetch, when the Claude section has an error, and when Claude is not set up. The panel dims last-known data after a temporary error, and the menu bar doesn't show that data as a number either. It shows only the "Weekly" limit, not "Fable" or other model limits.
 

@@ -52,4 +52,25 @@ struct MenuBarUsageTests {
             #expect(MenuBarUsage.weeklyPercent(limits: [weekly], error: error) == nil)
         }
     }
+
+    @Test
+    func `label is always two characters`() {
+        for (percent, expected) in [
+            (0, "00"), (1, "01"), (9, "09"), (10, "10"), (86, "86"), (99, "99"),
+            (100, "XX"), (101, "XX"), (120, "XX"), (Int.max / 2, "XX"),
+            (-1, "00"), (-(Int.max / 2), "00"),
+        ] {
+            #expect(MenuBarUsage.label(for: percent) == expected)
+            #expect(MenuBarUsage.label(for: percent).count == 2)
+        }
+    }
+
+    @Test
+    func `label follows the same rounding as the percentage`() {
+        for (value, expected) in [(0.4, "00"), (8.5, "09"), (99.4, "99"), (99.6, "XX"), (250, "XX"), (.nan, "00")] {
+            let limit = UsageLimit(name: "Weekly", percentUsed: value, resetsAt: nil, severity: nil, role: .overallWeekly)
+            let percent = MenuBarUsage.weeklyPercent(limits: [limit], error: nil)
+            #expect(percent.map(MenuBarUsage.label(for:)) == expected)
+        }
+    }
 }

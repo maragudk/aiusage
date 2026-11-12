@@ -19,19 +19,24 @@ struct MenuBarLabel: View {
     }
 
     static func image(number: Int) -> NSImage {
-        let text = String(number)
+        let text = MenuBarUsage.label(for: number)
         let font = NSFont.monospacedDigitSystemFont(ofSize: NSFont.menuBarFont(ofSize: 0).pointSize, weight: .regular)
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
-        let width = ceil((text as NSString).size(withAttributes: attributes).width)
+        // The width comes from two digits, not from the text. Digits share one width in this font, but `X` is
+        // about 1.3 pt wider than two of them at 13 pt, so `XX` is drawn centred in the two-digit width.
+        let width = ceil(("00" as NSString).size(withAttributes: attributes).width)
+        let textWidth = (text as NSString).size(withAttributes: attributes).width
         // 18 pt like the icon, or taller if the menu bar font is large enough to need it.
         let height = max(18, ceil(font.ascender - font.descender))
         let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { rect in
-            // Centre the digits themselves, which sit between the baseline and the cap height.
+            // Centre the text itself, which sits between the baseline and the cap height.
             let baseline = (rect.height - font.capHeight) / 2
-            (text as NSString).draw(at: NSPoint(x: 0, y: baseline + font.descender), withAttributes: attributes)
+            let origin = NSPoint(x: (rect.width - textWidth) / 2, y: baseline + font.descender)
+            (text as NSString).draw(at: origin, withAttributes: attributes)
             return true
         }
         image.isTemplate = true
+        // VoiceOver gets the real number, not the padded or `XX` text.
         image.accessibilityDescription = "Claude weekly usage \(UsageFormat.percent(Double(number)))"
         return image
     }
