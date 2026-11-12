@@ -69,6 +69,16 @@ struct ClaudeProviderTests {
         }
     }
 
+    @Test
+    func `a Keychain failure is passed on without calling the API`() async {
+        let http = FakeHTTPClient()
+        let provider = ClaudeProvider(http: http, readCredentials: { () throws(UsageError) in throw .keychainTimedOut }, now: { [now] in now })
+        await #expect(throws: UsageError.keychainTimedOut) {
+            try await provider.fetchLimits()
+        }
+        #expect(http.sentRequests.isEmpty)
+    }
+
     @Test(arguments: [
         #"not json"#,
         #"{"claudeAiOauth": {}}"#,

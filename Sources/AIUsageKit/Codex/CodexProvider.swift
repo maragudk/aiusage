@@ -106,7 +106,8 @@ public struct CodexProvider: UsageProvider {
             switch error {
             case .loginExpired, .notLoggedIn:
                 return false
-            case .unsupported, .keychainDenied, .keychain, .rateLimited, .server, .http, .network, .invalidResponse:
+            case .unsupported, .keychainDenied, .keychainReadFailed, .keychainTimedOut, .keychainToolFailed, .timedOut,
+                 .rateLimited, .server, .http, .network, .invalidResponse:
                 return true
             }
         }

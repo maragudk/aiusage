@@ -60,24 +60,28 @@ Turn on "Launch at login" in the panel to start the app when you log in.
 
 ## Keychain access
 
-The first time the app reads the Claude token, macOS asks whether AIUsage may use the `Claude Code-credentials` Keychain item. Click "Always Allow".
+The app reads the `Claude Code-credentials` item with `/usr/bin/security find-generic-password -w`, as claudeusage does. Claude Code writes the item with the same `security` tool, so macOS lets that tool read it without a prompt.
 
-macOS ties that permission to the app's code signature. A build signed with an Apple Development identity keeps the same signature across rebuilds. An ad hoc signature changes with every build, so macOS asks again after each install. This is why the install script prefers an Apple Development identity.
+The app doesn't use the Keychain API for this. Each time Claude Code refreshes its token, it updates the item, and that update removes the "Always Allow" that macOS stored for any other app. An app that reads the item directly therefore gets a new Keychain prompt after every token refresh.
 
-If you click "Deny", the app stops asking during automatic refreshes. Click Refresh to see the prompt again.
+You don't normally see a Keychain prompt. If macOS does show one, the app waits 10 seconds for an answer. After that it shows "Reading the Keychain took too long" and tries again later, with a longer wait each time. If you click "Deny", the app stops reading the Keychain during automatic refreshes. Click Refresh to try again.
+
+The panel says the token expired only when its expiry time in the Keychain item has passed, or when the API rejects it with HTTP 401. A Keychain error has its own message.
 
 ## Credential safety
 
 The app reads credentials that belong to other tools, so it handles them carefully:
 
-- **Read only.** The app never writes the Keychain item or `auth.json`, and it never refreshes a token itself. Claude Code rotates its token, and a Codex refresh token works only once, so a refresh from another app could log those tools out. The app only asks Codex to refresh its own login, and only when you click the button.
+- **Read only.** The app never writes the Keychain item, its access settings or `auth.json`, and it never refreshes a token itself. Claude Code rotates its token, and a Codex refresh token works only once, so a refresh from another app could log those tools out. The app only asks Codex to refresh its own login, and only when you click the button.
 - **Re-read on every refresh.** The app reads credentials again for each request and keeps them in memory only for that request.
 - **Sent only to the provider.** Tokens go only to `api.anthropic.com` and `chatgpt.com` over HTTPS. The app refuses redirects, so a token can't be sent anywhere else, and it doesn't store cookies or cache responses.
-- **No secrets in logs.** The app logs with `os.Logger` under the subsystem `dk.maragu.aiusage`. It records only the provider, the HTTP status and an error category, and never tokens, headers or response bodies. To read the log:
+- **No secrets in logs.** The app logs with `os.Logger` under the subsystem `dk.maragu.aiusage`. It records only the provider, the HTTP status and an error category, and never tokens, headers or response bodies. Each refresh logs a `refresh` line and then one `fetch ok` or `fetch failed` line per provider. To read the log:
 
   ```sh
-  log show --predicate 'subsystem == "dk.maragu.aiusage"' --last 1h
+  /usr/bin/log show --predicate 'subsystem == "dk.maragu.aiusage"' --last 1h
   ```
+
+  Use the full path `/usr/bin/log`, because in zsh `log` is a shell builtin. `swift test` logs under the same subsystem, so add `AND process == "AIUsage"` to the predicate to see only the app.
 
 - **No telemetry and no third-party dependencies.**
 
