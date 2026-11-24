@@ -54,7 +54,7 @@ public struct ClaudeProvider: UsageProvider {
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let data = try await http.get(request, provider: id, expiredMessage: Self.expiredMessage)
+        let data = try await http.fetch(request, provider: id, expiredMessage: Self.expiredMessage)
         return try ClaudeUsageParser.parse(data)
     }
 }

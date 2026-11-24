@@ -16,6 +16,20 @@ struct CommandTests {
     }
 
     @Test
+    func `runs with the given environment and working directory`() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let result = await Command.run(
+            shell,
+            arguments: ["-c", #"printf '%s %s' "$AIUSAGE_TEST" "$(basename "$PWD")""#],
+            timeout: .seconds(10),
+            environment: ["AIUSAGE_TEST": "set"],
+            currentDirectory: directory
+        )
+        #expect(result == .exited(status: 0, output: Data("set \(directory.lastPathComponent)".utf8)))
+    }
+
+    @Test
     func `a command that exits while a background child holds stdout returns its output at the deadline`() async {
         let start = ContinuousClock.now
         let result = await Command.run(shell, arguments: ["-c", "printf 'hello'; sleep 5 &"], timeout: .milliseconds(500))

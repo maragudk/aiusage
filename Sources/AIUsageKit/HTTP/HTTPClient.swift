@@ -51,8 +51,16 @@ private final class NoRedirects: NSObject, URLSessionTaskDelegate, Sendable {
 }
 
 extension HTTPClient {
-    /// Sends a GET request for a provider, logs the status, and maps failure statuses to errors.
-    func get(_ request: URLRequest, provider: String, expiredMessage: String) async throws(UsageError) -> Data {
+    /// Sends a provider's request, logs the status, and maps failure statuses to errors.
+    ///
+    /// - Parameter providerError: a provider-specific error for a failure status and its body, such as a 403 that
+    ///   says why. When it returns nil, the usual mapping applies.
+    func fetch(
+        _ request: URLRequest,
+        provider: String,
+        expiredMessage: String,
+        providerError: (_ status: Int, _ body: Data) -> UsageError? = { _, _ in nil }
+    ) async throws(UsageError) -> Data {
         let data: Data
         let response: HTTPURLResponse
         do {
@@ -62,6 +70,9 @@ extension HTTPClient {
             throw error
         }
         Log.usage.notice("fetch provider=\(provider, privacy: .public) status=\(response.statusCode, privacy: .public)")
+        if !(200..<300).contains(response.statusCode), let error = providerError(response.statusCode, data) {
+            throw error
+        }
         switch response.statusCode {
         case 200..<300:
             return data

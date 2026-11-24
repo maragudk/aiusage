@@ -75,7 +75,7 @@ public struct CodexProvider: UsageProvider {
         }
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let data = try await http.get(request, provider: id, expiredMessage: Self.expiredMessage)
+        let data = try await http.fetch(request, provider: id, expiredMessage: Self.expiredMessage)
         return try CodexUsageParser.parse(data, now: now())
     }
 

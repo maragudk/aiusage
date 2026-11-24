@@ -32,9 +32,26 @@ enum Command {
     /// the deadline if a background child keeps stdout open. Otherwise it gets SIGTERM, then SIGKILL, and
     /// the result is `.timedOut`.
     static func run(_ executable: URL, arguments: [String], timeout: Duration) async -> CommandResult {
+        await run(executable, arguments: arguments, timeout: timeout, environment: nil, currentDirectory: nil)
+    }
+
+    /// Like `run(_:arguments:timeout:)`, with the given environment and working directory instead of the app's.
+    static func run(
+        _ executable: URL,
+        arguments: [String],
+        timeout: Duration,
+        environment: [String: String]?,
+        currentDirectory: URL?
+    ) async -> CommandResult {
         let process = Process()
         process.executableURL = executable
         process.arguments = arguments
+        if let environment {
+            process.environment = environment
+        }
+        if let currentDirectory {
+            process.currentDirectoryURL = currentDirectory
+        }
         process.standardInput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         let output = Pipe()
