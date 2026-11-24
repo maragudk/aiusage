@@ -11,6 +11,8 @@ struct AntigravityCredentials: Sendable, Equatable {
     static let keychainAccount = "antigravity"
     static let notLoggedInMessage = "No Antigravity login found. Run agy and log in first."
     private static let keyringPrefix = "go-keyring-base64:"
+    /// The hex encoding that older versions of the Go keyring library wrote.
+    private static let legacyKeyringPrefix = "go-keyring-encoded:"
 
     let accessToken: String
     /// When the access token expires, or nil if the stored login doesn't say.
@@ -28,6 +30,11 @@ struct AntigravityCredentials: Sendable, Equatable {
         var text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
         if text.hasPrefix(keyringPrefix) {
             guard let decoded = Data(base64Encoded: String(text.dropFirst(keyringPrefix.count))) else {
+                throw .notLoggedIn(notLoggedInMessage)
+            }
+            text = String(decoding: decoded, as: UTF8.self)
+        } else if text.hasPrefix(legacyKeyringPrefix) {
+            guard let decoded = KeychainPassword.hexDecoded(Data(text.dropFirst(legacyKeyringPrefix.count).utf8)) else {
                 throw .notLoggedIn(notLoggedInMessage)
             }
             text = String(decoding: decoded, as: UTF8.self)

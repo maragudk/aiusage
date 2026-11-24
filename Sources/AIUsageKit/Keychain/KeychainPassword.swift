@@ -59,7 +59,7 @@ enum KeychainPassword {
     }
 
     /// The bytes that `data` spells in hex, or nil if it isn't hex.
-    private static func hexDecoded(_ data: Data) -> Data? {
+    static func hexDecoded(_ data: Data) -> Data? {
         guard !data.isEmpty, data.count.isMultiple(of: 2) else {
             return nil
         }

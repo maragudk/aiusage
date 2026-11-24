@@ -161,6 +161,17 @@ struct AntigravityProviderTests {
         }
     }
 
+    @Test(arguments: [CommandResult.timedOut, .launchFailed])
+    func `an agy run that didn't finish says nothing about the login`(result: CommandResult) async throws {
+        let provider = provider(http: FakeHTTPClient(), credentials: credentials(expiresAt: now.addingTimeInterval(-60)), run: { _, _, _, _, _ in result })
+        let repair = try #require(provider.loginRepair)
+        await repair.perform { _ in }
+
+        await #expect(throws: UsageError.loginExpired(AntigravityProvider.expiredMessage)) {
+            try await provider.fetchLimits()
+        }
+    }
+
     @Test
     func `a new login clears the failed refresh`() async throws {
         let stored = Mutex(credentials(expiresAt: now.addingTimeInterval(-60)))

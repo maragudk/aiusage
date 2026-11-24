@@ -23,8 +23,8 @@ struct AntigravityLoginRepair: Sendable {
     ) async -> CommandResult
 
     let agy: URL
-    /// Checks the login after the refresh, and returns whether the server accepts it.
-    let checkLogin: @Sendable () async -> Bool
+    /// Checks the login after the refresh, given how `agy` ended, and returns whether the server accepts it.
+    let checkLogin: @Sendable (_ agyResult: CommandResult) async -> Bool
     var timeout: Duration = .seconds(60)
     var runCommand: Runner = Command.run
 
@@ -33,7 +33,7 @@ struct AntigravityLoginRepair: Sendable {
     func run(progress: @escaping @Sendable (String) -> Void) async {
         progress("Asking Antigravity to refresh its login…")
         let result = await refresh()
-        let isValid = await checkLogin()
+        let isValid = await checkLogin(result)
         Log.login.notice("agy models result=\(Self.describe(result), privacy: .public) valid=\(isValid, privacy: .public)")
     }
 

@@ -84,7 +84,7 @@ public struct AntigravityProvider: UsageProvider {
         guard let agy = locateAgy() else {
             return nil
         }
-        let repair = AntigravityLoginRepair(agy: agy, checkLogin: { [self] in await checkLoginAfterRefresh() }, runCommand: run)
+        let repair = AntigravityLoginRepair(agy: agy, checkLogin: { [self] in await checkLoginAfterRefresh(agyResult: $0) }, runCommand: run)
         return LoginRepair(
             title: "Refresh Antigravity login",
             help: "Runs agy models, which lets agy refresh its own login. It doesn't use any of your Antigravity quota.",
@@ -130,8 +130,9 @@ public struct AntigravityProvider: UsageProvider {
     /// Checks the login that `agy` left after a refresh. If the server still rejects it, remembers that, so the
     /// panel says to log in with `agy` instead of offering only the same refresh.
     ///
-    /// Only login failures count as rejection. A network or server error says nothing about the login.
-    func checkLoginAfterRefresh() async -> Bool {
+    /// Only login failures count as rejection. A network or server error says nothing about the login, and nor
+    /// does an `agy` run that timed out or didn't start, so then the panel keeps the usual expiry message.
+    func checkLoginAfterRefresh(agyResult: CommandResult) async -> Bool {
         let credentials: AntigravityCredentials
         do {
             credentials = try AntigravityCredentials.parse(await readCredentials())
@@ -141,7 +142,7 @@ public struct AntigravityProvider: UsageProvider {
         do {
             _ = try await fetchLimits(with: credentials)
         } catch {
-            if case .loginExpired = error {
+            if case .loginExpired = error, case .exited = agyResult {
                 failedRefresh.record(credentials)
             }
             return !Self.isLoginRejection(error)

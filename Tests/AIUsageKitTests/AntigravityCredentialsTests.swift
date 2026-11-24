@@ -21,6 +21,13 @@ struct AntigravityCredentialsTests {
     }
 
     @Test
+    func `decodes the older hex go-keyring value`() throws {
+        let hex = Data(json.utf8).map { String(format: "%02x", $0) }.joined()
+        let credentials = try AntigravityCredentials.parse(Data("go-keyring-encoded:\(hex)".utf8))
+        #expect(credentials.accessToken == "test-access-token")
+    }
+
+    @Test
     func `decodes plain JSON, as in the token file`() throws {
         let credentials = try AntigravityCredentials.parse(Data((json + "\n").utf8))
         #expect(credentials.accessToken == "test-access-token")
@@ -46,6 +53,7 @@ struct AntigravityCredentialsTests {
 
     @Test(arguments: [
         "go-keyring-base64:not base64!",
+        "go-keyring-encoded:not hex",
         "go-keyring-base64:" + Data("not json".utf8).base64EncodedString(),
         #"{"token": {"access_token": ""}}"#,
         #"{"token": {"refresh_token": "r"}}"#,
