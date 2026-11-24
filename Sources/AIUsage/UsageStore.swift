@@ -81,6 +81,11 @@ final class UsageStore {
         for provider in providers {
             let isAvailable = provider.isAvailable
             let repair = isAvailable ? provider.loginRepair : nil
+            // The provider may come back with another account, so its old number mustn't. Checked first, because
+            // any write to an observed property redraws the menu bar.
+            if !isAvailable, lastWeeklyPercents[provider.id] != nil {
+                lastWeeklyPercents[provider.id] = nil
+            }
             update(provider.id) { section in
                 section.isAvailable = isAvailable
                 section.repairTitle = repair?.title

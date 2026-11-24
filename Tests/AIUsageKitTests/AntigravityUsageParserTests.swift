@@ -81,6 +81,19 @@ struct AntigravityUsageParserTests {
         #expect(abs(limits[0].percentUsed - 10) < 0.000_001)
     }
 
+    @Test
+    func `falls back to the nested fraction when the top-level one is not a number`() throws {
+        let json = #"""
+        {"groups": [{"buckets": [
+            {"window": "5h", "remainingFraction": "n/a", "remaining": {"remainingFraction": 0.4}},
+            {"window": "weekly", "remainingFraction": "n/a", "remaining": {}}
+        ]}]}
+        """#
+        let limits = try AntigravityUsageParser.parse(Data(json.utf8))
+        #expect(limits.map(\.name) == ["5-hour"])
+        #expect(abs(limits[0].percentUsed - 60) < 0.000_001)
+    }
+
     /// Proto3 JSON leaves out fields at their default value, so a used-up bucket has no fraction.
     @Test
     func `counts a bucket with a window or reset time but no fraction as fully used`() throws {

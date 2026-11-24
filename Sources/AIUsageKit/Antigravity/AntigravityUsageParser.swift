@@ -170,9 +170,14 @@ private struct Bucket: Decodable {
         bucketID = container.lenient(String.self, forKey: .bucketID)
         displayName = container.lenient(String.self, forKey: .displayName).flatMap { $0.isEmpty ? nil : $0 }
         window = container.lenient(String.self, forKey: .window).flatMap { $0.isEmpty ? nil : $0 }
-        remainingFraction = switch Fraction(container, forKey: .remainingFraction) {
-        case .omitted: container.lenient(Remaining.self, forKey: .remaining)?.remainingFraction ?? .omitted
-        case let fraction: fraction
+        // A number in either place wins. Only a field that is there but isn't a number makes the bucket invalid.
+        let topLevel = Fraction(container, forKey: .remainingFraction)
+        let nested = container.lenient(Remaining.self, forKey: .remaining)?.remainingFraction ?? .omitted
+        remainingFraction = switch (topLevel, nested) {
+        case (.value, _): topLevel
+        case (_, .value): nested
+        case (.invalid, _), (_, .invalid): .invalid
+        case (.omitted, .omitted): .omitted
         }
         resetTime = container.lenient(String.self, forKey: .resetTime)
         isDisabled = container.lenient(Bool.self, forKey: .disabled) ?? false

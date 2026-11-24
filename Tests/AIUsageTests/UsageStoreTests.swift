@@ -198,14 +198,21 @@ struct UsageStoreTests {
     }
 
     @Test
-    func `a provider that is no longer set up shows dashes`() async {
-        let codex = ScriptedProvider(id: "codex", results: [.success([limit(42, role: .overallWeekly)])])
+    func `a provider that is no longer set up shows dashes, also after it is set up again`() async {
+        let codex = ScriptedProvider(id: "codex", results: [.success([limit(42, role: .overallWeekly)]), .failure(.loginExpired("x"))])
         let store = UsageStore(providers: [codex], now: { [clock] in clock.now })
 
         await store.refresh(.poll)
         codex.setAvailable(false)
         clock.advance(120)
         await store.refresh(.poll)
+        #expect(store.menuBarSlots.map(\.percent) == [nil, nil, nil])
+
+        // Set up again, perhaps with another account, whose first fetch fails: the old number must not come back.
+        codex.setAvailable(true)
+        clock.advance(120)
+        await store.refresh(.poll)
+        #expect(codex.fetchCount == 2)
         #expect(store.menuBarSlots.map(\.percent) == [nil, nil, nil])
     }
 
