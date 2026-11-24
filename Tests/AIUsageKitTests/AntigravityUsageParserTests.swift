@@ -1,0 +1,114 @@
+import Foundation
+import Testing
+
+@testable import AIUsageKit
+
+struct AntigravityUsageParserTests {
+    @Test
+    func `builds a row per bucket of a live response, shortest window first`() throws {
+        let limits = try AntigravityUsageParser.parse(Fixture.data("antigravity-quota"))
+
+        #expect(limits.map(\.name) == ["Gemini · 5-hour", "Gemini · Weekly", "Claude and GPT · 5-hour", "Claude and GPT · Weekly"])
+        #expect(limits.map { ($0.percentUsed * 1_000).rounded() / 1_000 } == [6.998, 1.749, 0, 0])
+        #expect(limits.map(\.severity) == [nil, nil, nil, nil])
+        #expect(limits.map(\.role) == [nil, nil, nil, nil])
+        #expect(limits[0].resetsAt == (try Fixture.date("2026-11-24T14:26:33Z")))
+        #expect(limits[1].resetsAt == (try Fixture.date("2026-12-01T09:26:33Z")))
+        #expect(Set(limits.map(\.id)).count == 4)
+    }
+
+    @Test
+    func `unwraps a response envelope and a nested remaining fraction`() throws {
+        let json = #"""
+        {"response": {"groups": [{"displayName": "Gemini Models", "buckets": [
+            {"bucketId": "gemini-5h", "window": "5h", "remaining": {"remainingFraction": 0.25}, "resetTime": "2026-11-24T14:00:00.5Z"}
+        ]}]}}
+        """#
+        let limits = try AntigravityUsageParser.parse(Data(json.utf8))
+
+        #expect(limits.map(\.name) == ["Gemini · 5-hour"])
+        #expect(limits.map(\.percentUsed) == [75])
+        #expect(limits[0].resetsAt == (try Fixture.date("2026-11-24T14:00:00.5Z")))
+    }
+
+    @Test
+    func `skips disabled buckets and buckets without a fraction rather than showing 0%`() throws {
+        let json = #"""
+        {"groups": [{"displayName": "Gemini Models", "buckets": [
+            {"bucketId": "a", "window": "5h", "remainingFraction": 0.5, "disabled": true},
+            {"bucketId": "b", "window": "5h"},
+            {"bucketId": "c", "window": "5h", "remainingFraction": "lots"},
+            {"bucketId": "d", "window": "weekly", "remainingFraction": 0.9, "disabled": false},
+            "junk"
+        ]}, "junk"]}
+        """#
+        let limits = try AntigravityUsageParser.parse(Data(json.utf8))
+
+        #expect(limits.map(\.name) == ["Gemini · Weekly"])
+        #expect(abs(limits[0].percentUsed - 10) < 0.000_001)
+    }
+
+    @Test
+    func `shows a new group and window without code changes`() throws {
+        let json = #"""
+        {"groups": [
+            {"displayName": "Gemini 4 Argon", "buckets": [{"bucketId": "argon-weekly", "window": "weekly", "remainingFraction": 0.4}]},
+            {"buckets": [{"bucketId": "x", "window": "monthly", "remainingFraction": 1}, {"bucketId": "y", "window": "30m", "remainingFraction": 1}]},
+            {"displayName": "Extra models", "buckets": [{"bucketId": "z", "displayName": "Daily Limit Remaining", "remainingFraction": 1}]}
+        ]}
+        """#
+        let limits = try AntigravityUsageParser.parse(Data(json.utf8))
+
+        #expect(limits.map(\.name) == ["Gemini 4 Argon · Weekly", "30-minute", "Monthly", "Extra · Daily Limit"])
+        #expect(limits[0].percentUsed == 60)
+        #expect(limits[1].resetsAt == nil)
+    }
+
+    @Test
+    func `clamps fractions outside 0 to 1`() throws {
+        let json = #"{"groups": [{"buckets": [{"window": "5h", "remainingFraction": 1.5}, {"window": "weekly", "remainingFraction": -0.5}]}]}"#
+        let limits = try AntigravityUsageParser.parse(Data(json.utf8))
+        #expect(limits.map(\.percentUsed) == [0, 100])
+    }
+
+    @Test(arguments: [
+        #"{"groups": []}"#,
+        #"{"groups": [{"displayName": "Gemini Models", "buckets": [{"window": "5h", "disabled": true, "remainingFraction": 1}]}]}"#,
+        #"{"response": {}}"#,
+        "[]",
+        "not json",
+    ])
+    func `throws when there is no usable bucket`(json: String) {
+        #expect(throws: UsageError.invalidResponse) {
+            try AntigravityUsageParser.parse(Data(json.utf8))
+        }
+    }
+
+    @Test(arguments: [
+        ("5h", "5-hour"),
+        ("weekly", "Weekly"),
+        ("WEEKLY", "Weekly"),
+        ("daily", "Daily"),
+        ("1h", "1-hour"),
+        ("30m", "30-minute"),
+        ("7d", "Weekly"),
+        ("2d", "2-day"),
+        ("1w", "Weekly"),
+        ("monthly", "Monthly"),
+        ("rolling_window", "Rolling window"),
+    ])
+    func `names windows like the other providers`(window: String, expected: String) {
+        #expect(AntigravityUsageParser.windowName(window) == expected)
+    }
+
+    @Test(arguments: [
+        ("Gemini Models", "Gemini"),
+        ("Claude and GPT models", "Claude and GPT"),
+        ("Gemini 4 Argon", "Gemini 4 Argon"),
+        ("Models", "Models"),
+        ("  Gemini Models ", "Gemini"),
+    ])
+    func `shortens group names`(displayName: String, expected: String) {
+        #expect(AntigravityUsageParser.groupName(displayName) == expected)
+    }
+}

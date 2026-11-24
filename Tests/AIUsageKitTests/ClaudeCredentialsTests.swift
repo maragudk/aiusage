@@ -1,5 +1,4 @@
 import Foundation
-import Synchronization
 import Testing
 
 @testable import AIUsageKit
@@ -112,32 +111,5 @@ struct ClaudeCredentialsTests {
     func `Keychain errors don't say the token expired`(error: UsageError) {
         #expect(!error.message.localizedCaseInsensitiveContains("expired"))
         #expect(error.category != UsageError.loginExpired("").category)
-    }
-}
-
-/// Answers each call with the next canned result and records the calls.
-private final class FakeRunner: Sendable {
-    struct Call {
-        let executable: URL
-        let arguments: [String]
-        let timeout: Duration
-    }
-
-    private let state: Mutex<(results: [CommandResult], calls: [Call])>
-
-    init(results: [CommandResult]) {
-        state = Mutex((results: results, calls: []))
-    }
-
-    var calls: [Call] {
-        state.withLock { $0.calls }
-    }
-
-    @Sendable
-    func run(_ executable: URL, arguments: [String], timeout: Duration) async -> CommandResult {
-        state.withLock { state in
-            state.calls.append(Call(executable: executable, arguments: arguments, timeout: timeout))
-            return state.results.isEmpty ? .launchFailed : state.results.removeFirst()
-        }
     }
 }

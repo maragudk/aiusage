@@ -1,0 +1,27 @@
+{
+  "error": {
+    "code": 403,
+    "message": "You do not have a valid license of this product. Please contact your administrator to request a license. If you are not an enterprise user and believe you are receiving this message as an error, please try using the latest version and logging in again. (#3501)",
+    "status": "PERMISSION_DENIED",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+        "reason": "SUBSCRIPTION_REQUIRED",
+        "domain": "cloudaicompanion.googleapis.com",
+        "metadata": {
+          "uiMessage": "true",
+          "error_number": "1001"
+        }
+      },
+      {
+        "@type": "type.googleapis.com/google.rpc.Help",
+        "links": [
+          {
+            "description": "Learn more",
+            "url": "https://cloud.google.com/gemini/docs/codeassist/request-license"
+          }
+        ]
+      }
+    ]
+  }
+}
