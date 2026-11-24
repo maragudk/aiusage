@@ -40,7 +40,7 @@ struct AntigravityProviderTests {
         let http = FakeHTTPClient(body: try Fixture.data("antigravity-quota"))
         let limits = try await provider(http: http, credentials: credentials(expiresAt: now.addingTimeInterval(600))).fetchLimits()
 
-        #expect(limits.map(\.name) == ["Gemini · 5-hour", "Gemini · Weekly", "Claude and GPT · 5-hour", "Claude and GPT · Weekly"])
+        #expect(limits.map(\.name) == ["Gemini · 5-hour", "Gemini · Weekly"])
         let request = try #require(http.sentRequests.first)
         #expect(http.sentRequests.count == 1)
         #expect(request.httpMethod == "POST")
@@ -187,7 +187,7 @@ struct AntigravityProviderTests {
         await repair.perform { _ in }
 
         stored.withLock { $0 = credentials(expiresAt: now.addingTimeInterval(3_600)) }
-        #expect(try await provider.fetchLimits().count == 4)
+        #expect(try await provider.fetchLimits().count == 2)
     }
 
     @Test
@@ -208,6 +208,6 @@ struct AntigravityProviderTests {
         let repair = try #require(provider.loginRepair)
         await repair.perform { _ in }
 
-        #expect(try await provider.fetchLimits().count == 4)
+        #expect(try await provider.fetchLimits().count == 2)
     }
 }

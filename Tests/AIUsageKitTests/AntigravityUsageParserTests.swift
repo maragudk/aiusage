@@ -5,16 +5,31 @@ import Testing
 
 struct AntigravityUsageParserTests {
     @Test
-    func `builds a row per bucket of a live response, shortest window first`() throws {
+    func `builds a row per Gemini bucket of a live response, shortest window first`() throws {
         let limits = try AntigravityUsageParser.parse(Fixture.data("antigravity-quota"))
 
-        #expect(limits.map(\.name) == ["Gemini · 5-hour", "Gemini · Weekly", "Claude and GPT · 5-hour", "Claude and GPT · Weekly"])
-        #expect(limits.map { ($0.percentUsed * 1_000).rounded() / 1_000 } == [6.998, 1.749, 0, 0])
-        #expect(limits.map(\.severity) == [nil, nil, nil, nil])
-        #expect(limits.map(\.role) == [nil, nil, nil, nil])
+        #expect(limits.map(\.name) == ["Gemini · 5-hour", "Gemini · Weekly"])
+        #expect(limits.map { ($0.percentUsed * 1_000).rounded() / 1_000 } == [6.998, 1.749])
+        #expect(limits.map(\.severity) == [nil, nil])
+        #expect(limits.map(\.role) == [nil, nil])
         #expect(limits[0].resetsAt == (try Fixture.date("2026-11-24T14:26:33Z")))
         #expect(limits[1].resetsAt == (try Fixture.date("2026-12-01T09:26:33Z")))
-        #expect(Set(limits.map(\.id)).count == 4)
+        #expect(Set(limits.map(\.id)).count == 2)
+    }
+
+    @Test
+    func `leaves out third-party model buckets by their ID, whatever the group is called`() throws {
+        let json = #"""
+        {"groups": [
+            {"displayName": "Claude and GPT models", "buckets": [{"bucketId": "3p-5h", "window": "5h", "remainingFraction": 0.5}]},
+            {"displayName": "Renamed group", "buckets": [
+                {"bucketId": "3p-weekly", "window": "weekly", "remainingFraction": 0.5},
+                {"bucketId": "other-weekly", "window": "weekly", "remainingFraction": 0.5}
+            ]}
+        ]}
+        """#
+        let limits = try AntigravityUsageParser.parse(Data(json.utf8))
+        #expect(limits.map(\.name) == ["Renamed group · Weekly"])
     }
 
     @Test
@@ -75,6 +90,7 @@ struct AntigravityUsageParserTests {
         #"{"groups": []}"#,
         #"{"groups": [{"displayName": "Gemini Models", "buckets": [{"window": "5h", "disabled": true, "remainingFraction": 1}]}]}"#,
         #"{"response": {}}"#,
+        #"{"groups": [{"displayName": "Claude and GPT models", "buckets": [{"bucketId": "3p-5h", "window": "5h", "remainingFraction": 1}]}]}"#,
         "[]",
         "not json",
     ])

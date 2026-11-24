@@ -6,7 +6,12 @@ import Foundation
 /// "window": "5h", "remainingFraction": 0.93, "resetTime": "…"}, …]}, …]}`. Community tools also report the
 /// groups wrapped in `{"response": {…}}`, and the fraction nested in `"remaining": {"remainingFraction": …}`.
 /// The endpoint is undocumented, so every field is optional and odd values are skipped rather than fatal.
+///
+/// Buckets of third-party models, such as Claude and GPT through Google, are left out: the panel shows Google's own
+/// models only. They are told apart by their bucket ID, `3p-5h` and `3p-weekly`, rather than by the group's name.
 enum AntigravityUsageParser {
+    static let thirdPartyBucketPrefix = "3p-"
+
     static func parse(_ data: Data) throws(UsageError) -> [UsageLimit] {
         let response: Response
         do {
@@ -19,6 +24,7 @@ enum AntigravityUsageParser {
         let limits = groups.enumerated().flatMap { groupIndex, group in
             let groupName = group.displayName.map(Self.groupName)
             return (group.buckets ?? []).compactMap(\.value).enumerated()
+                .filter { $0.element.bucketID?.hasPrefix(Self.thirdPartyBucketPrefix) != true }
                 .compactMap { bucketIndex, bucket in
                     bucket.usageLimit(id: "\(groupIndex)-\(bucketIndex)-\(bucket.bucketID ?? "")", groupName: groupName)
                 }
