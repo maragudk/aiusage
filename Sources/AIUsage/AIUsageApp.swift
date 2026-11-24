@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let store = UsageStore(providers: [
         ClaudeProvider(),
         CodexProvider(version: AppDelegate.version),
+        AntigravityProvider(),
     ])
 
     func applicationDidFinishLaunching(_ notification: Notification) {
