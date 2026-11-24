@@ -49,6 +49,8 @@ The app looks for the CLI at `~/.local/bin/agy`, `/opt/homebrew/bin/agy` and `/u
 
 The panel shows a row for each model group and window, such as "Gemini · 5-hour" and "Gemini · Weekly". The percentage is the part of the quota that you have used. A new group appears without a code change. The panel doesn't show disabled limits, and it doesn't show the limits for third-party models, such as Claude and GPT, that Antigravity also offers. It recognises those by their limit IDs, which start with `3p-`.
 
+Google's API leaves out a value when it is zero, so a limit without a remaining fraction is fully used. The panel shows such a limit as 100% if it has a window or a reset time, and skips it otherwise.
+
 The access token lasts one hour, and `agy` renews it only while it runs. The app doesn't renew it, because that would need Antigravity's OAuth client secret. After an hour without `agy`, the panel therefore shows "Antigravity login expired." and a "Refresh Antigravity login" button.
 
 When you click the button, the app runs `agy models`, which lists the available models. To do that, `agy` renews its own token and saves it in the Keychain. Listing models doesn't use any of your Antigravity quota. The app runs the command with auto-update turned off, with a 60-second time limit, and with `open` and `xdg-open` replaced by stand-ins that fail, so `agy` can't open a browser sign-in.

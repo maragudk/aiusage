@@ -125,7 +125,7 @@ private struct Bucket: Decodable {
     let bucketID: String?
     let displayName: String?
     let window: String?
-    let remainingFraction: Double?
+    let remainingFraction: Fraction
     let resetTime: String?
     let isDisabled: Bool
 
@@ -134,8 +134,33 @@ private struct Bucket: Decodable {
         case displayName, window, remainingFraction, remaining, resetTime, disabled
     }
 
+    /// What a bucket says about the part of its quota that is left.
+    enum Fraction {
+        case value(Double)
+        /// Proto3 JSON leaves out a field at its default value, so a missing fraction means none is left.
+        case omitted
+        /// Present but not a number.
+        case invalid
+
+        init<Key>(_ container: KeyedDecodingContainer<Key>, forKey key: Key) {
+            guard container.contains(key), (try? container.decodeNil(forKey: key)) == false else {
+                self = .omitted
+                return
+            }
+            self = container.lenient(Double.self, forKey: key).map(Fraction.value) ?? .invalid
+        }
+    }
+
     struct Remaining: Decodable {
-        let remainingFraction: Double?
+        let remainingFraction: Fraction
+
+        enum CodingKeys: String, CodingKey {
+            case remainingFraction
+        }
+
+        init(from decoder: any Decoder) throws {
+            remainingFraction = Fraction(try decoder.container(keyedBy: CodingKeys.self), forKey: .remainingFraction)
+        }
     }
 
     init(from decoder: any Decoder) throws {
@@ -143,15 +168,30 @@ private struct Bucket: Decodable {
         bucketID = container.lenient(String.self, forKey: .bucketID)
         displayName = container.lenient(String.self, forKey: .displayName).flatMap { $0.isEmpty ? nil : $0 }
         window = container.lenient(String.self, forKey: .window).flatMap { $0.isEmpty ? nil : $0 }
-        remainingFraction = container.lenient(Double.self, forKey: .remainingFraction)
-            ?? container.lenient(Remaining.self, forKey: .remaining)?.remainingFraction
+        remainingFraction = switch Fraction(container, forKey: .remainingFraction) {
+        case .omitted: container.lenient(Remaining.self, forKey: .remaining)?.remainingFraction ?? .omitted
+        case let fraction: fraction
+        }
         resetTime = container.lenient(String.self, forKey: .resetTime)
         isDisabled = container.lenient(Bool.self, forKey: .disabled) ?? false
     }
 
-    /// The row for this bucket and its window length for sorting, or nil if it is disabled or has no fraction.
+    /// The row for this bucket and its window length for sorting, or nil if it is disabled or has nothing to show.
+    ///
+    /// A bucket without a fraction is used up, but only if it has a window or a reset time. Without either it
+    /// could be anything, so it is skipped rather than shown as 100%.
     func usageLimit(id: String, groupName: String?) -> (limit: UsageLimit, seconds: Int?)? {
-        guard !isDisabled, let remainingFraction, remainingFraction.isFinite else {
+        guard !isDisabled else {
+            return nil
+        }
+        let resetsAt = resetTime.flatMap(ISO8601.date(from:))
+        let remaining: Double
+        switch remainingFraction {
+        case .value(let value) where value.isFinite:
+            remaining = value
+        case .omitted where window != nil || resetsAt != nil:
+            remaining = 0
+        case .value, .omitted, .invalid:
             return nil
         }
         let windowName = window.map(AntigravityUsageParser.windowName)
@@ -162,8 +202,8 @@ private struct Bucket: Decodable {
         let limit = UsageLimit(
             id: id,
             name: name,
-            percentUsed: (1 - min(max(remainingFraction, 0), 1)) * 100,
-            resetsAt: resetTime.flatMap(ISO8601.date(from:)),
+            percentUsed: (1 - min(max(remaining, 0), 1)) * 100,
+            resetsAt: resetsAt,
             severity: nil
         )
         return (limit, window.flatMap(AntigravityUsageParser.seconds(of:)))

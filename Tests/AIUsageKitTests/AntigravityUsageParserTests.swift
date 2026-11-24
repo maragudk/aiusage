@@ -47,13 +47,15 @@ struct AntigravityUsageParserTests {
     }
 
     @Test
-    func `skips disabled buckets and buckets without a fraction rather than showing 0%`() throws {
+    func `skips disabled buckets, odd fractions and buckets with nothing to show`() throws {
         let json = #"""
         {"groups": [{"displayName": "Gemini Models", "buckets": [
             {"bucketId": "a", "window": "5h", "remainingFraction": 0.5, "disabled": true},
-            {"bucketId": "b", "window": "5h"},
+            {"bucketId": "b"},
             {"bucketId": "c", "window": "5h", "remainingFraction": "lots"},
             {"bucketId": "d", "window": "weekly", "remainingFraction": 0.9, "disabled": false},
+            {"bucketId": "e", "window": "5h", "disabled": true},
+            {"bucketId": "f", "resetTime": "not a date"},
             "junk"
         ]}, "junk"]}
         """#
@@ -61,6 +63,24 @@ struct AntigravityUsageParserTests {
 
         #expect(limits.map(\.name) == ["Gemini · Weekly"])
         #expect(abs(limits[0].percentUsed - 10) < 0.000_001)
+    }
+
+    /// Proto3 JSON leaves out fields at their default value, so a used-up bucket has no fraction.
+    @Test
+    func `counts a bucket with a window or reset time but no fraction as fully used`() throws {
+        let json = #"""
+        {"groups": [{"displayName": "Gemini Models", "buckets": [
+            {"bucketId": "gemini-5h", "window": "5h", "resetTime": "2026-11-24T14:00:00Z"},
+            {"bucketId": "gemini-weekly", "window": "weekly", "remainingFraction": null},
+            {"bucketId": "gemini-daily", "displayName": "Daily Limit Remaining", "resetTime": "2026-11-25T00:00:00Z"},
+            {"bucketId": "gemini-nested", "window": "30m", "remaining": {}}
+        ]}]}
+        """#
+        let limits = try AntigravityUsageParser.parse(Data(json.utf8))
+
+        #expect(limits.map(\.name) == ["Gemini · 30-minute", "Gemini · 5-hour", "Gemini · Weekly", "Gemini · Daily Limit"])
+        #expect(limits.map(\.percentUsed) == [100, 100, 100, 100])
+        #expect(limits[1].resetsAt == (try Fixture.date("2026-11-24T14:00:00Z")))
     }
 
     @Test
