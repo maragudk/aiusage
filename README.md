@@ -6,9 +6,9 @@ A macOS menu bar app that shows how much of your AI subscription limits you have
 
 ## What it shows
 
-The menu bar item shows the percentage of your Claude weekly limit that you have used, as a two-character number without a percent sign, such as `86`. Values below 10 have a leading zero (`09`), and 100 or more show `XX`, so the item keeps the same width. It is plain text in the menu bar's own colour, and VoiceOver reads the real number, such as "Claude weekly usage 86%" or "Claude weekly usage 100%". The app has no Dock icon. Click the number to open a small panel with one section per provider.
+The menu bar item shows three numbers: the percentage of your weekly limit that you have used for Claude, Codex and Gemini (through Antigravity), always in that order, such as `86 42 17`. Each number has two characters and no percent sign. Values below 10 have a leading zero (`09`), and 100 or more show `XX`. A provider without a number shows `--`, so the item keeps the same width. It is plain text in the menu bar's own colour, and VoiceOver reads the real numbers, such as "Claude weekly usage 86%, Codex weekly usage 100%, Gemini weekly usage not available". The app has no Dock icon. Click the numbers to open a small panel with one section per provider.
 
-The item keeps showing the latest weekly number after an error, such as a 429, a network problem, a Keychain problem or an expired token, even when the panel dims or hides its rows. It shows a gauge icon instead only when the app has not fetched a number yet in this session, and when Claude is not set up. It shows only the "Weekly" limit, not "Fable" or other model limits.
+Each number keeps showing the latest value after an error, such as a 429, a network problem, a Keychain problem or an expired token, even when the panel dims or hides its rows. A provider shows `--` only when it is not set up, when the app has not fetched a number for it yet in this session, or when its last response had no weekly limit. With nothing to show, the item reads `-- -- --`. Each number is the provider's overall weekly limit only: for Claude the "Weekly" limit, not "Fable" or other model limits; for Codex the weekly window of your plan, not code review; and for Antigravity the Gemini weekly limit.
 
 Each limit has a row with:
 
@@ -112,6 +112,8 @@ The app reads credentials that belong to other tools, so it handles them careful
 ## Adding a provider
 
 Write one new type that conforms to `UsageProvider` in `Sources/AIUsageKit/Usage/UsageProvider.swift`, and add it to the provider list in `Sources/AIUsage/AIUsageApp.swift`. A provider has a name and returns a list of limits, each with a name, the percentage used, and an optional reset date and severity.
+
+The menu bar shows only the providers in `MenuBarUsage.providers`, in `Sources/AIUsageKit/Usage/MenuBarUsage.swift`. To add a number there, add the provider to that list and give its weekly limit the role `overallWeekly`.
 
 ## Licence
 

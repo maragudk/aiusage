@@ -27,8 +27,8 @@ struct PanelWindowAnchor: NSViewRepresentable {
             guard let window else {
                 return
             }
-            // Moves count too: the menu bar item changes width when its label changes between icon and number,
-            // and the system may then put an open panel back where it was.
+            // Moves count too: the system may put an open panel back where it was, for example after the menu bar
+            // item moves.
             let names = [
                 NSWindow.didResizeNotification, NSWindow.didMoveNotification,
                 NSWindow.didBecomeKeyNotification, NSWindow.didChangeScreenNotification,

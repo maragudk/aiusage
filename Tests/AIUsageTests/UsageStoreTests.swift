@@ -9,10 +9,10 @@ import Testing
 private final class ScriptedProvider: UsageProvider {
     let id: String
     let name: String
-    let isAvailable = true
     let loginRepair: LoginRepair? = nil
     private let results: Mutex<[Result<[UsageLimit], UsageError>]>
     private let count = Mutex(0)
+    private let available = Mutex(true)
 
     init(id: String = "claude", results: [Result<[UsageLimit], UsageError>]) {
         self.id = id
@@ -22,6 +22,14 @@ private final class ScriptedProvider: UsageProvider {
 
     var fetchCount: Int {
         count.withLock { $0 }
+    }
+
+    var isAvailable: Bool {
+        available.withLock { $0 }
+    }
+
+    func setAvailable(_ isAvailable: Bool) {
+        available.withLock { $0 = isAvailable }
     }
 
     func fetchLimits() async throws(UsageError) -> [UsageLimit] {
@@ -43,6 +51,10 @@ private final class Clock {
 struct UsageStoreTests {
     private let clock = Clock()
     private let weekly = UsageLimit(name: "Weekly", percentUsed: 85.4, resetsAt: nil, severity: nil, role: .overallWeekly)
+
+    private func limit(_ percent: Double, role: UsageLimit.Role? = nil) -> UsageLimit {
+        UsageLimit(name: "Limit", percentUsed: percent, resetsAt: nil, severity: nil, role: role)
+    }
 
     private func makeStore(_ provider: ScriptedProvider) -> UsageStore {
         let clock = clock
@@ -122,28 +134,79 @@ struct UsageStoreTests {
             .failure(.loginExpired("x")),
         ])
         let store = makeStore(provider)
-        #expect(store.menuBarPercent == nil)
+        #expect(store.menuBarSlots.map(\.percent) == [nil, nil, nil])
 
         await store.refresh(.poll)
-        #expect(store.menuBarPercent == 85)
+        #expect(store.menuBarSlots.map(\.percent) == [85, nil, nil])
 
         clock.advance(10_000)
         await store.refresh(.poll)
         #expect(store.sections.first?.error == .rateLimited(retryAfter: nil))
-        #expect(store.menuBarPercent == 85)
+        #expect(store.menuBarSlots.map(\.percent) == [85, nil, nil])
 
         clock.advance(10_000)
         await store.refresh(.poll)
         #expect(store.sections.first?.limits.isEmpty == true)
-        #expect(store.menuBarPercent == 85)
+        #expect(store.menuBarSlots.map(\.percent) == [85, nil, nil])
     }
 
     @Test
-    func `the menu bar shows the icon when the first fetch fails`() async {
+    func `the menu bar shows dashes when the first fetch fails`() async {
         let provider = ScriptedProvider(results: [.failure(.network)])
         let store = makeStore(provider)
         await store.refresh(.poll)
-        #expect(store.menuBarPercent == nil)
+        #expect(store.menuBarSlots.map(\.percent) == [nil, nil, nil])
+    }
+
+    @Test
+    func `the menu bar shows each provider's weekly number in a fixed order`() async {
+        let antigravity = ScriptedProvider(id: "antigravity", results: [.success([limit(17, role: .overallWeekly), limit(60)])])
+        let codex = ScriptedProvider(id: "codex", results: [.success([limit(42, role: .overallWeekly)])])
+        let claude = ScriptedProvider(id: "claude", results: [.success([limit(73), weekly])])
+        let store = UsageStore(providers: [antigravity, codex, claude], now: { [clock] in clock.now })
+
+        await store.refresh(.poll)
+        #expect(store.menuBarSlots.map(\.name) == ["Claude", "Codex", "Gemini"])
+        #expect(store.menuBarSlots.map(\.percent) == [85, 42, 17])
+    }
+
+    @Test
+    func `each menu bar number survives its own provider's errors`() async {
+        let claude = ScriptedProvider(id: "claude", results: [.success([weekly]), .failure(.keychainTimedOut)])
+        let codex = ScriptedProvider(id: "codex", results: [.success([limit(42, role: .overallWeekly)]), .failure(.network)])
+        let antigravity = ScriptedProvider(id: "antigravity", results: [.success([limit(17, role: .overallWeekly)]), .failure(.loginExpired("x"))])
+        let store = UsageStore(providers: [claude, codex, antigravity], now: { [clock] in clock.now })
+
+        await store.refresh(.poll)
+        clock.advance(10_000)
+        await store.refresh(.poll)
+        #expect(antigravity.fetchCount == 2)
+        #expect(store.menuBarSlots.map(\.percent) == [85, 42, 17])
+    }
+
+    @Test
+    func `a response without a weekly limit clears that provider's number`() async {
+        let codex = ScriptedProvider(id: "codex", results: [.success([limit(42, role: .overallWeekly)]), .success([limit(10)])])
+        let store = UsageStore(providers: [codex], now: { [clock] in clock.now })
+
+        await store.refresh(.poll)
+        #expect(store.menuBarSlots.map(\.percent) == [nil, 42, nil])
+
+        clock.advance(120)
+        await store.refresh(.poll)
+        #expect(store.menuBarSlots.map(\.percent) == [nil, nil, nil])
+    }
+
+    @Test
+    func `a provider that is no longer set up shows dashes`() async {
+        let codex = ScriptedProvider(id: "codex", results: [.success([limit(42, role: .overallWeekly)])])
+        let store = UsageStore(providers: [codex], now: { [clock] in clock.now })
+
+        await store.refresh(.poll)
+        codex.setAvailable(false)
+        clock.advance(120)
+        await store.refresh(.poll)
+        #expect(store.menuBarSlots.map(\.percent) == [nil, nil, nil])
     }
 
     @Test

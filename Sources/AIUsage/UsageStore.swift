@@ -18,9 +18,9 @@ final class UsageStore {
 
     private(set) var sections: [ProviderSection]
     private(set) var isRefreshing = false
-    /// The Claude weekly percentage from the latest successful fetch. It survives errors, so the menu bar keeps
-    /// showing the last known number.
-    private(set) var lastClaudeWeeklyPercent: Int?
+    /// Each provider's weekly percentage from its latest successful fetch, by provider ID. It survives errors, so
+    /// the menu bar keeps showing the last known numbers.
+    private(set) var lastWeeklyPercents: [String: Int] = [:]
 
     @ObservationIgnored private let providers: [any UsageProvider]
     @ObservationIgnored private var backoffs: [String: Backoff] = [:]
@@ -44,12 +44,14 @@ final class UsageStore {
         visibleSections.compactMap(\.lastSuccess).max()
     }
 
-    /// The number the menu bar shows instead of its icon, or nil when it should show the icon.
-    var menuBarPercent: Int? {
-        guard visibleSections.contains(where: { $0.id == "claude" }) else {
-            return nil
+    /// The numbers the menu bar shows, in the order of `MenuBarUsage.providers`. A provider that is hidden, or
+    /// has no weekly number yet, has a slot without one.
+    var menuBarSlots: [MenuBarUsage.Slot] {
+        let visibleIDs = Set(visibleSections.map(\.id))
+        return MenuBarUsage.providers.map { provider in
+            let percent = visibleIDs.contains(provider.id) ? lastWeeklyPercents[provider.id] : nil
+            return MenuBarUsage.Slot(name: provider.name, percent: percent)
         }
-        return lastClaudeWeeklyPercent
     }
 
     /// Starts polling. The first refresh happens right away.
@@ -153,9 +155,7 @@ final class UsageStore {
         switch result {
         case .success(let limits):
             backoffs[id, default: Backoff()].recordSuccess()
-            if id == "claude" {
-                lastClaudeWeeklyPercent = MenuBarUsage.weeklyPercent(limits: limits)
-            }
+            lastWeeklyPercents[id] = MenuBarUsage.weeklyPercent(limits: limits)
             update(id) { section in
                 section.limits = limits
                 section.error = nil

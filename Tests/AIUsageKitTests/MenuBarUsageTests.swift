@@ -29,6 +29,14 @@ struct MenuBarUsageTests {
     }
 
     @Test
+    func `finds the weekly limits of Codex and Antigravity by their IDs`() throws {
+        let codex = try CodexUsageParser.parse(Fixture.data("codex-usage"), now: Date(timeIntervalSince1970: 0))
+        let antigravity = try AntigravityUsageParser.parse(Fixture.data("antigravity-quota"))
+        #expect(MenuBarUsage.weeklyPercent(limits: codex) == 5)
+        #expect(MenuBarUsage.weeklyPercent(limits: antigravity) == 2)
+    }
+
+    @Test
     func `has no number before the first fetch`() {
         #expect(MenuBarUsage.weeklyPercent(limits: []) == nil)
     }
@@ -48,6 +56,45 @@ struct MenuBarUsageTests {
             #expect(MenuBarUsage.label(for: percent) == expected)
             #expect(MenuBarUsage.label(for: percent).count == 2)
         }
+    }
+
+    @Test
+    func `shows Claude, Codex and Gemini in that order`() {
+        #expect(MenuBarUsage.providers.map(\.id) == ["claude", "codex", "antigravity"])
+        #expect(MenuBarUsage.providers.map(\.name) == ["Claude", "Codex", "Gemini"])
+    }
+
+    @Test
+    func `a slot without a number shows two dashes`() {
+        #expect(MenuBarUsage.label(for: nil) == "--")
+        #expect(MenuBarUsage.label(for: Int?.some(9)) == "09")
+    }
+
+    @Test
+    func `labels every slot with two characters`() {
+        let slots = [
+            MenuBarUsage.Slot(name: "Claude", percent: 86),
+            MenuBarUsage.Slot(name: "Codex", percent: nil),
+            MenuBarUsage.Slot(name: "Gemini", percent: 100),
+        ]
+        #expect(MenuBarUsage.labels(for: slots) == ["86", "--", "XX"])
+    }
+
+    @Test
+    func `shows dashes in every slot when nothing is available`() {
+        let slots = MenuBarUsage.providers.map { MenuBarUsage.Slot(name: $0.name, percent: nil) }
+        #expect(MenuBarUsage.labels(for: slots) == ["--", "--", "--"])
+    }
+
+    @Test
+    func `VoiceOver reads the real numbers and says when one is not available`() {
+        let slots = [
+            MenuBarUsage.Slot(name: "Claude", percent: 86),
+            MenuBarUsage.Slot(name: "Codex", percent: 4),
+            MenuBarUsage.Slot(name: "Gemini", percent: nil),
+        ]
+        #expect(MenuBarUsage.accessibilityDescription(for: slots) == "Claude weekly usage 86%, Codex weekly usage 4%, Gemini weekly usage not available")
+        #expect(MenuBarUsage.accessibilityDescription(for: [MenuBarUsage.Slot(name: "Claude", percent: 120)]) == "Claude weekly usage 120%")
     }
 
     @Test
