@@ -1,6 +1,6 @@
 # AIUsage
 
-A macOS menu bar app that shows how much of your AI subscription limits you have used, for Claude and OpenAI Codex.
+A macOS menu bar app that shows how much of your AI subscription limits you have used, for Claude, OpenAI Codex and the Antigravity CLI.
 
 ![AIUsage panel showing Claude weekly and Fable usage, and Codex weekly usage](docs/screenshot.png)
 
@@ -12,7 +12,7 @@ The item keeps showing the latest weekly number after an error, such as a 429, a
 
 Each limit has a row with:
 
-- its name, such as "Weekly", "Fable" or "5-hour"
+- its name, such as "Weekly", "Fable" or "5-hour", or for Antigravity the model group and the window, such as "Gemini · 5-hour"
 - the percentage used, with a bar coloured by severity
 - when it resets, both relative ("in 2d 4h") and absolute ("Fri 21:00")
 
@@ -38,6 +38,24 @@ If the Codex login has expired, the panel shows a "Refresh Codex login" button. 
 2. If the usage endpoint still rejects the login after that, the app runs `codex login`, which opens the sign-in page in your browser.
 
 Neither step runs unless you click the button.
+
+### Antigravity
+
+The app calls `POST https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary`, the undocumented endpoint that the `agy` CLI itself uses. It authenticates with the OAuth token that `agy` keeps in the login Keychain, in a generic password with the service `gemini` and the account `antigravity`. If that item doesn't exist, the app reads `~/.gemini/antigravity-cli/antigravity-oauth-token`, where `agy` keeps the token when `SSH_TTY` is set.
+
+The app sends the User-Agent of Antigravity's own client, because the endpoint answers other clients with HTTP 403 `SUBSCRIPTION_REQUIRED`. If the endpoint gives the app that answer too, the panel says that Google reports no Antigravity subscription for the account.
+
+The app looks for the CLI at `~/.local/bin/agy`, `/opt/homebrew/bin/agy` and `/usr/local/bin/agy`. If it finds neither the CLI nor the token file, it hides the Antigravity section.
+
+The panel shows a row for each model group and window, such as "Gemini · 5-hour" and "Gemini · Weekly". The percentage is the part of the quota that you have used. A new group appears without a code change. The panel doesn't show disabled limits, and it doesn't show the limits for third-party models, such as Claude and GPT, that Antigravity also offers. It recognises those by their limit IDs, which start with `3p-`.
+
+The access token lasts one hour, and `agy` renews it only while it runs. The app doesn't renew it, because that would need Antigravity's OAuth client secret. After an hour without `agy`, the panel therefore shows "Antigravity login expired." and a "Refresh Antigravity login" button.
+
+When you click the button, the app runs `agy models`, which lists the available models. To do that, `agy` renews its own token and saves it in the Keychain. Listing models doesn't use any of your Antigravity quota. The app runs the command with auto-update turned off, with a 60-second time limit, and with `open` and `xdg-open` replaced by stand-ins that fail, so `agy` can't open a browser sign-in.
+
+If the login still doesn't work after that, for example because the refresh token has expired too, the panel tells you to run `agy` in Terminal and log in again.
+
+The app doesn't run `agy` unless you click the button.
 
 ## Install
 
@@ -68,15 +86,17 @@ The app doesn't use the Keychain API for this. Each time Claude Code refreshes i
 
 You don't normally see a Keychain prompt. If macOS does show one, for example to unlock a locked keychain, the app waits 60 seconds for an answer. After that it shows "Reading the Keychain took too long" and tries again later, with a longer wait each time. If you click "Deny", the app shows "Keychain access was denied" and asks again later, with a longer wait each time.
 
+The app reads Antigravity's Keychain item (service `gemini`, account `antigravity`) with the same `security` command. It waits the same 60 seconds and shows the same messages.
+
 The panel says the token expired only when its expiry time in the Keychain item has passed, or when the API rejects it with HTTP 401. A Keychain error has its own message.
 
 ## Credential safety
 
 The app reads credentials that belong to other tools, so it handles them carefully:
 
-- **Read only.** The app never writes the Keychain item, its access settings or `auth.json`, and it never refreshes a token itself. Claude Code rotates its token, and a Codex refresh token works only once, so a refresh from another app could log those tools out. The app only asks Codex to refresh its own login, and only when you click the button.
+- **Read only.** The app never writes a Keychain item, its access settings, `auth.json` or the Antigravity token file, and it never refreshes a token itself. Claude Code rotates its token, and a Codex refresh token works only once, so a refresh from another app could log those tools out. The app only asks Codex and `agy` to refresh their own logins, and only when you click that provider's button.
 - **Re-read on every refresh.** The app reads credentials again for each request and keeps them in memory only for that request.
-- **Sent only to the provider.** Tokens go only to `api.anthropic.com` and `chatgpt.com` over HTTPS. The app refuses redirects, so a token can't be sent anywhere else, and it doesn't store cookies or cache responses.
+- **Sent only to the provider.** Tokens go only to `api.anthropic.com`, `chatgpt.com` and `daily-cloudcode-pa.googleapis.com` over HTTPS. The app refuses redirects, so a token can't be sent anywhere else, and it doesn't store cookies or cache responses.
 - **No secrets in logs.** The app logs with `os.Logger` under the subsystem `dk.maragu.aiusage`. It records only the provider, the HTTP status and an error category, and never tokens, headers or response bodies. Each refresh logs a `refresh` line and then one `fetch ok` or `fetch failed` line per provider. To read the log:
 
   ```sh
