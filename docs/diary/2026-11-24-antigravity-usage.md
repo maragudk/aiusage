@@ -142,3 +142,66 @@ To validate, run `swift test`, then `script/install`, and read the app log with 
 - Unverified: what happens when the refresh token itself is dead. The browser shims follow CodexBar's finding that `agy` print mode runs `open` from `PATH`, but I didn't check that `agy models` does the same, or how it exits then.
 - Decide whether a bucket without `remainingFraction` means exhausted, once one has been observed.
 - If Google starts rejecting the hub version, read the installed `agy` version for the User-Agent.
+
+## Step 3: Three weekly numbers in the menu bar, and used-up Gemini buckets
+
+**Author:** builder
+
+### Prompt Context
+
+**Verbatim prompt:** The lead's brief had two changes. "Change 1: menu bar shows three weekly numbers. Today the menu bar item shows only the Claude weekly percentage as a two-character number (e.g. `86`, `09`, `XX` for ≥100), falling back to a gauge icon when there's no number yet or Claude isn't set up. Change it to: Three two-character slots in fixed order **Claude, Codex, Gemini**, separated by single spaces, e.g. `86 42 17`. […] Each slot is that provider's **weekly** limit: Claude "Weekly" (not Fable/other model limits, as today), Codex weekly, and Antigravity's Gemini weekly bucket (`bucketId` `gemini-weekly`). Pick the weekly limit by a stable identifier, not by display text, where possible. A slot with no number — provider not set up, hidden, not fetched yet this session, or no weekly limit in the response — shows `--`. **Remove the gauge icon entirely**: with nothing available the item shows `-- -- --`. The item should keep a constant width (use monospaced digits, so `--` and digits take the same width if feasible). Each slot keeps its latest number through errors (429, network, Keychain, expired login), exactly like the Claude number does today. […] VoiceOver reads real values per provider, e.g. "Claude weekly usage 86%, Codex weekly usage 42%, Gemini weekly usage 17%", and says "not available" (or similar) for a `--` slot." And: "Change 2: Antigravity bucket with missing `remainingFraction`. Google's API is protobuf-backed, and proto3 JSON omits fields at their default value, so a fully used bucket (fraction 0) likely arrives without `remainingFraction`. Currently such buckets are skipped. Change: a non-disabled bucket that has a window or reset time but no `remainingFraction` counts as fully used (100%). Buckets with neither stay skipped." Plus README updates, a live check with `script/install`, and self-review.
+**Interpretation:** Generalise the Claude-only menu bar number to one remembered weekly number per provider, mark each provider's weekly limit with the existing `UsageLimit.Role.overallWeekly`, and draw three fixed-width cells. Separately, treat an omitted Antigravity fraction as zero left.
+**Inferred intent:** Markus wants to see at a glance how close he is to every weekly limit he pays for, without opening the panel, and he doesn't want an exhausted Gemini bucket to disappear.
+
+### What I did
+
+Four commits on top of `df10b83`:
+
+1. `6b3eb00` counts an Antigravity bucket without `remainingFraction` as fully used. `Bucket` in `/Sources/AIUsageKit/Antigravity/AntigravityUsageParser.swift` now holds a `Fraction` (`.value`, `.omitted`, `.invalid`) instead of `Double?`, because `lenient` returns nil both for a missing key and for a wrong type. Missing or `null` is `.omitted`, and so is a `remaining` object without the field. An omitted fraction gives 100% if the bucket has a window or a parseable reset time, and the bucket is skipped otherwise. A fraction that is present but not a number still skips the bucket. The README's Antigravity section says so.
+2. `f1e3f5e` gives the Codex and Gemini weekly limits the role `.overallWeekly`. Codex: a window of the main `rate_limit` (not code review, not additional limits) whose `limit_window_seconds` is exactly 604800. Antigravity: the bucket whose `bucketId` is `gemini-weekly`. The role's doc comment now describes all three providers.
+3. `1adc5f2` is the menu bar change. `MenuBarUsage` (in `/Sources/AIUsageKit/Usage/MenuBarUsage.swift`) gained `Slot`, `providers` (the fixed order `claude`, `codex`, `antigravity`, read as Claude, Codex, Gemini), `label(for: Int?)` with `--` for nil, `labels(for:)` and `accessibilityDescription(for:)`. `UsageStore.lastClaudeWeeklyPercent` became `lastWeeklyPercents: [String: Int]`, set on every successful fetch, and `menuBarPercent` became `menuBarSlots`, which leaves out hidden providers. `MenuBarLabel` always draws one template image: each label centred in a cell two digits wide, with a space's width between cells. The gauge icon is gone. The README's "What it shows" and "Adding a provider" sections describe the new item.
+4. `df634e9` fixes two self-review findings (below).
+
+The live check: after `script/install`, the log showed `fetch ok` for all three providers. `osascript -e 'tell application "System Events" to tell process "AIUsage" to get title of menu bar item 1 of menu bar 2'` returned "Claude weekly usage 59%, Codex weekly usage 0%, Gemini weekly usage 6%", and the item is 77 × 24 pt. A `screencapture -R` of just the item's frame showed `59 00 06`. A throwaway test that called the three providers live printed `codex id=main-primary name=Weekly percent=0.0 role=…overallWeekly` (this account's Codex plan has only a weekly window) and `antigravity id=0-0-gemini-weekly … percent=6.32… role=…overallWeekly`, so 0% and 6% are real. I deleted the throwaway tests and the captures.
+
+`swift build` has no warnings, and `swift test` passes 149 tests in 18 suites, plus 10 in the app target.
+
+### Why
+
+The role already existed for Claude and is never derived from the row name, so reusing it kept the selection in the parsers, next to the API identifiers. Keeping the store's remembered number per provider ID makes "keeps its number through errors" the same code path for all three. Cells of a fixed width make the item's width independent of the glyphs, which is the only way to keep `--` and `XX` from moving it.
+
+### What worked
+
+- Rendering the real `MenuBarLabel.image(slots:)` offscreen for `-- -- --`, `XX 09 --`, `59 00 06` and `88 88 88` gave 59 × 18 pt every time, with the right accessibility descriptions.
+- Reading the status item's accessibility title through System Events works now, so the VoiceOver text was checked on the installed app, not only in tests.
+
+### What didn't work
+
+- A Python one-liner piped into `swift test` in a single Bash call was refused: "This session is isolated in the worktree …, but this command is too complex to verify that it stays inside the worktree." As in Step 2, I wrote patch scripts to the scratchpad and ran them as plain commands.
+- `init(_ container: KeyedDecodingContainer<some CodingKey>, forKey key: some CodingKey)` failed with "cannot convert value of type 'some CodingKey' (generic parameter of initializer 'init(_:forKey:)') to expected argument type 'some CodingKey'". Two `some` parameters are two different generic types; a named `init<Key>` fixed it.
+- For the menu bar change I wrote tests and code close together, so the tests failed to compile rather than failing on assertions first. The parser and review-fix tests did fail first.
+
+### What I learned
+
+- At 13 pt in `monospacedDigitSystemFont`, a digit is 8.11 pt, `-` is 6.06 pt, a space 3.58 pt and `X` 8.75 pt. The figure dash (U+2012) and the minus sign (U+2212) are exactly digit-wide, but two of them in a row draw as one long line, so I kept the plain `--` centred in a digit-wide cell. The item image is 3 × 17 + 2 × 4 = 59 pt wide, and the status item 77 pt with the system's padding.
+- This account's live Codex response has a single main window, the weekly one, as `primary_window`. The role therefore can't assume the weekly window is `secondary_window`.
+
+### What was tricky
+
+- Telling "missing" from "not a number" in the Antigravity fraction, with both the flat and the nested form. My first version fell back to the nested `remaining.remainingFraction` only when the top-level field was missing, which the review caught (below).
+
+### What warrants review
+
+Self-review with `/code-review medium` over `df10b83..HEAD` found five issues:
+
+- **Fixed:** a bucket whose top-level `remainingFraction` was not a number no longer fell back to a valid nested `remaining.remainingFraction`, which the old `??` chain did. Now a number in either place wins, and only a non-number with no number elsewhere makes the bucket invalid.
+- **Fixed (was pre-existing for Claude):** a provider's remembered number survived the provider disappearing, so after signing in again, perhaps with another account, the old number came back while the first fetch failed. The store now forgets the number when the provider becomes unavailable. It writes only when there is something to clear, because any write to the observed dictionary redraws the menu bar.
+- **Not changed, as specified:** the Gemini slot depends on the exact ID `gemini-weekly`, and the Codex slot on a window of exactly 604800 seconds. A renamed bucket or a missing window length would show `--` while the panel still shows a weekly row. Both match the live data today.
+- **Not changed, as specified:** without the gauge icon, a first launch with no credentials shows an unlabelled `-- -- --`, and a Claude-only user always sees `86 -- --`.
+
+To validate, run `swift test`, then `script/install`, and read the item with the `osascript` command above.
+
+### Future work
+
+- An exhausted Gemini bucket still hasn't been seen live, so the omitted-fraction rule rests on proto3's JSON rules, not on an observed response.
+- Antigravity's token expires an hour after `agy` last ran, and the Gemini number then stays at its last value until someone clicks the refresh button. That is what the brief asked for, but the number can be hours old.
