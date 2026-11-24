@@ -11,7 +11,7 @@ struct AntigravityUsageParserTests {
         #expect(limits.map(\.name) == ["Gemini · 5-hour", "Gemini · Weekly"])
         #expect(limits.map { ($0.percentUsed * 1_000).rounded() / 1_000 } == [6.998, 1.749])
         #expect(limits.map(\.severity) == [nil, nil])
-        #expect(limits.map(\.role) == [nil, nil])
+        #expect(limits.map(\.role) == [nil, .overallWeekly])
         #expect(limits[0].resetsAt == (try Fixture.date("2026-11-24T14:26:33Z")))
         #expect(limits[1].resetsAt == (try Fixture.date("2026-12-01T09:26:33Z")))
         #expect(Set(limits.map(\.id)).count == 2)
@@ -30,6 +30,22 @@ struct AntigravityUsageParserTests {
         """#
         let limits = try AntigravityUsageParser.parse(Data(json.utf8))
         #expect(limits.map(\.name) == ["Renamed group · Weekly"])
+    }
+
+    @Test
+    func `marks only the Gemini weekly bucket as the weekly limit, by its ID`() throws {
+        let json = #"""
+        {"groups": [
+            {"displayName": "Gemini Models", "buckets": [
+                {"bucketId": "gemini-5h", "window": "weekly", "remainingFraction": 0.5},
+                {"bucketId": "gemini-weekly", "window": "5h", "displayName": "Something else", "remainingFraction": 0.5}
+            ]},
+            {"displayName": "Gemini 4 Argon", "buckets": [{"bucketId": "argon-weekly", "window": "weekly", "remainingFraction": 0.5}]}
+        ]}
+        """#
+        let limits = try AntigravityUsageParser.parse(Data(json.utf8))
+        #expect(limits.map(\.id) == ["0-1-gemini-weekly", "0-0-gemini-5h", "1-0-argon-weekly"])
+        #expect(limits.map(\.role) == [.overallWeekly, nil, nil])
     }
 
     @Test

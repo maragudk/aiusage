@@ -13,7 +13,8 @@ public struct UsageLimit: Sendable, Equatable, Identifiable {
     public let role: Role?
 
     public enum Role: Sendable, Equatable {
-        /// Claude's weekly limit over all models, not a model-scoped one.
+        /// The provider's own weekly limit, which the menu bar shows: Claude's over all models rather than a
+        /// model-scoped one, Codex's plan limit rather than code review, and Antigravity's Gemini bucket.
         case overallWeekly
     }
 

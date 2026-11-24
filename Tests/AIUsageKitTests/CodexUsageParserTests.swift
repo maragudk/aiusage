@@ -13,6 +13,7 @@ struct CodexUsageParserTests {
         #expect(limits.map(\.name) == ["5-hour", "Weekly", "Code review · Weekly", "codex_other · 30-minute"])
         #expect(limits.map(\.percentUsed) == [42, 5, 10, 88])
         #expect(limits.map(\.severity) == [nil, nil, nil, nil])
+        #expect(limits.map(\.role) == [nil, .overallWeekly, nil, nil])
         #expect(limits[0].resetsAt == Date(timeIntervalSince1970: 1_762_873_320))
         #expect(limits[3].resetsAt == Date(timeIntervalSince1970: 1_762_873_800))
         #expect(Set(limits.map(\.id)).count == 4)
@@ -23,8 +24,22 @@ struct CodexUsageParserTests {
         let limits = try CodexUsageParser.parse(Fixture.data("codex-usage-weekly-only"), now: now)
 
         #expect(limits.map(\.name) == ["Weekly"])
+        #expect(limits.map(\.role) == [.overallWeekly])
         #expect(limits[0].percentUsed == 17.5)
         #expect(limits[0].resetsAt == now.addingTimeInterval(3_600))
+    }
+
+    @Test
+    func `marks only a seven-day window of the main rate limit as the weekly limit`() throws {
+        let json = #"""
+        {"rate_limit": {"primary_window": {"used_percent": 1, "limit_window_seconds": 86400}, "secondary_window": {"used_percent": 2}},
+         "code_review_rate_limit": {"primary_window": {"used_percent": 3, "limit_window_seconds": 604800}},
+         "additional_rate_limits": [{"limit_name": "x", "rate_limit": {"primary_window": {"used_percent": 4, "limit_window_seconds": 604800}}}]}
+        """#
+        let limits = try CodexUsageParser.parse(Data(json.utf8), now: now)
+
+        #expect(limits.map(\.name) == ["Daily", "Secondary", "Code review · Weekly", "x · Weekly"])
+        #expect(limits.map(\.role) == [nil, nil, nil, nil])
     }
 
     @Test

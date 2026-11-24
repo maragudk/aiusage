@@ -5,6 +5,8 @@ import Foundation
 /// The shape follows the openai/codex source (`RateLimitStatusPayload`) and a live response, which also
 /// has `code_review_rate_limit` with the same shape as `rate_limit`. Every field is optional.
 enum CodexUsageParser {
+    static let weekSeconds = 7 * 86_400
+
     static func parse(_ data: Data, now: Date) throws(UsageError) -> [UsageLimit] {
         let response: Response
         do {
@@ -13,11 +15,11 @@ enum CodexUsageParser {
             throw .invalidResponse
         }
 
-        let main = response.rateLimit?.usageLimits(idPrefix: "main", namePrefix: nil, now: now) ?? []
-        let codeReview = response.codeReviewRateLimit?.usageLimits(idPrefix: "code-review", namePrefix: "Code review", now: now) ?? []
+        let main = response.rateLimit?.usageLimits(idPrefix: "main", namePrefix: nil, isMain: true, now: now) ?? []
+        let codeReview = response.codeReviewRateLimit?.usageLimits(idPrefix: "code-review", namePrefix: "Code review", isMain: false, now: now) ?? []
         let additional = (response.additionalRateLimits ?? []).compactMap(\.value).enumerated().flatMap { index, limit in
             let prefix = limit.limitName ?? limit.meteredFeature ?? "Additional"
-            return limit.rateLimit?.usageLimits(idPrefix: "additional-\(index)", namePrefix: prefix, now: now) ?? []
+            return limit.rateLimit?.usageLimits(idPrefix: "additional-\(index)", namePrefix: prefix, isMain: false, now: now) ?? []
         }
         let limits = main + codeReview + additional
         guard !limits.isEmpty else {
@@ -96,10 +98,12 @@ private struct RateLimit: Decodable {
         secondaryWindow = container.lenient(Window.self, forKey: .secondaryWindow)
     }
 
-    func usageLimits(idPrefix: String, namePrefix: String?, now: Date) -> [UsageLimit] {
+    /// The rows of both windows. `isMain` is true for the plan's own rate limit, whose seven-day window is the
+    /// overall weekly limit.
+    func usageLimits(idPrefix: String, namePrefix: String?, isMain: Bool, now: Date) -> [UsageLimit] {
         [
-            primaryWindow?.usageLimit(id: "\(idPrefix)-primary", fallbackName: "Primary", namePrefix: namePrefix, now: now),
-            secondaryWindow?.usageLimit(id: "\(idPrefix)-secondary", fallbackName: "Secondary", namePrefix: namePrefix, now: now),
+            primaryWindow?.usageLimit(id: "\(idPrefix)-primary", fallbackName: "Primary", namePrefix: namePrefix, isMain: isMain, now: now),
+            secondaryWindow?.usageLimit(id: "\(idPrefix)-secondary", fallbackName: "Secondary", namePrefix: namePrefix, isMain: isMain, now: now),
         ].compactMap(\.self)
     }
 }
@@ -125,7 +129,7 @@ private struct Window: Decodable {
         resetAt = container.lenient(Double.self, forKey: .resetAt)
     }
 
-    func usageLimit(id: String, fallbackName: String, namePrefix: String?, now: Date) -> UsageLimit? {
+    func usageLimit(id: String, fallbackName: String, namePrefix: String?, isMain: Bool, now: Date) -> UsageLimit? {
         guard let usedPercent else {
             return nil
         }
@@ -139,6 +143,8 @@ private struct Window: Decodable {
         } else {
             nil
         }
-        return UsageLimit(id: id, name: name, percentUsed: usedPercent, resetsAt: resetsAt, severity: nil)
+        // By the window length from the API, never by the row name.
+        let role: UsageLimit.Role? = isMain && seconds == CodexUsageParser.weekSeconds ? .overallWeekly : nil
+        return UsageLimit(id: id, name: name, percentUsed: usedPercent, resetsAt: resetsAt, severity: nil, role: role)
     }
 }

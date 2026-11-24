@@ -11,6 +11,8 @@ import Foundation
 /// models only. They are told apart by their bucket ID, `3p-5h` and `3p-weekly`, rather than by the group's name.
 enum AntigravityUsageParser {
     static let thirdPartyBucketPrefix = "3p-"
+    /// The bucket of Gemini's weekly limit, which the menu bar shows.
+    static let geminiWeeklyBucketID = "gemini-weekly"
 
     static func parse(_ data: Data) throws(UsageError) -> [UsageLimit] {
         let response: Response
@@ -204,7 +206,8 @@ private struct Bucket: Decodable {
             name: name,
             percentUsed: (1 - min(max(remaining, 0), 1)) * 100,
             resetsAt: resetsAt,
-            severity: nil
+            severity: nil,
+            role: bucketID == AntigravityUsageParser.geminiWeeklyBucketID ? .overallWeekly : nil
         )
         return (limit, window.flatMap(AntigravityUsageParser.seconds(of:)))
     }
